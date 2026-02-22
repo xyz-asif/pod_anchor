@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:anchor/core/constants/api_endpoints.dart';
 import 'package:anchor/core/errors/failures.dart';
 import 'package:anchor/shared/models/api_response.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'api_client.g.dart';
 
 /// Centralized API client using Dio.
 /// Handles ALL error catching and response parsing.
@@ -87,4 +90,10 @@ class ApiClient {
       throw ServerFailure('Unexpected error: $e');
     }
   }
+}
+
+/// Riverpod provider for ApiClient.
+@riverpod
+ApiClient apiClient(ApiClientRef ref) {
+  return ApiClient();
 }

@@ -1,4 +1,4 @@
-/// Used in bloc states to track the current status.
+/// Used in controller states to track the current status.
 ///
 /// Usage in state:
 ///   class AuthState {
@@ -8,9 +8,4 @@
 ///
 /// Usage in view:
 ///   if (state.status == Status.loading) showLoader();
-enum Status {
-  initial,
-  loading,
-  success,
-  error,
-}
+enum Status { initial, loading, success, error }

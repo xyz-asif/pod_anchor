@@ -1,10 +1,13 @@
 import 'package:anchor/core/constants/api_endpoints.dart';
 import 'package:anchor/core/network/api_client.dart';
 import 'package:anchor/features/auth/models/user_model.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'auth_repo.g.dart';
 
 /// Handles all auth-related API calls.
 /// No try-catch here — ApiClient handles all errors.
-/// If something fails, Failure is thrown and Bloc catches it.
+/// If something fails, Failure is thrown and Controller catches it.
 class AuthRepo {
   final ApiClient apiClient;
 
@@ -42,4 +45,10 @@ class AuthRepo {
 
     return UserModel.fromJson(response.data);
   }
+}
+
+/// Riverpod provider for AuthRepo.
+@riverpod
+AuthRepo authRepo(AuthRepoRef ref) {
+  return AuthRepo(apiClient: ref.read(apiClientProvider));
 }
