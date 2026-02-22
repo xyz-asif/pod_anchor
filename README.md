@@ -1,25 +1,25 @@
 # Flutter Starter Template
 
-MVVM architecture with BLoC state management.
+MVVM architecture with Riverpod state management.
 
 ## Architecture
 
 ```
-View → fires Event → Bloc → calls Repo → Repo calls API → Bloc emits State → View rebuilds
+View → watches Provider → Controller (Notifier) → calls Repo → Repo calls API → state updates → View rebuilds
 ```
 
 ## Folder Structure
 
 ```
 lib/
-├── core/          → Stuff every feature uses (API, DI, routes, errors, utils)
+├── core/          → Stuff every feature uses (API, routes, errors, utils)
 ├── shared/        → Reusable widgets, models, enums
 ├── config/        → Theme, text styles
 ├── features/      → Each feature is self-contained
 │   └── feature_name/
 │       ├── models/
 │       ├── repos/
-│       ├── bloc/
+│       ├── controllers/
 │       ├── views/
 │       └── widgets/
 ├── app.dart       → Root widget
@@ -30,23 +30,17 @@ lib/
 
 1. Create the feature folder:
 ```bash
-mkdir -p lib/features/YOUR_FEATURE/{models,repos,bloc,views,widgets}
+mkdir -p lib/features/YOUR_FEATURE/{models,repos,controllers,views,widgets}
 ```
 
 2. Create files in this order:
    - `models/` → Your data model with `fromJson`/`toJson`
-   - `repos/` → API calls using `ApiClient`
-   - `bloc/` → Events, State, and Bloc
-   - `views/` → Screens
+   - `repos/` → API calls using `ApiClient`, with `@riverpod` provider
+   - `controllers/` → `AsyncNotifier` with `@riverpod` annotation
+   - `views/` → Screens using `ConsumerStatefulWidget`
    - `widgets/` → Feature-specific widgets
 
-3. Register in `core/di/injection_container.dart`:
-```dart
-sl.registerLazySingleton(() => YourRepo(apiClient: sl()));
-sl.registerFactory(() => YourBloc(yourRepo: sl()));
-```
-
-4. Add route in `core/routes/app_router.dart`:
+3. Add route in `core/routes/app_router.dart`:
 ```dart
 GoRoute(
   path: '/your-feature',
@@ -63,22 +57,23 @@ dart run build_runner build    # Generate .g.dart files
 
 ## Conventions
 
-- **Repos** throw `Failure` on errors — Blocs catch them.
-- **Bloc states** use `Status` enum (initial, loading, success, error).
-- **BlocProvider** is created in the View, not above it.
-- One Bloc per feature. Split only if the feature grows complex.
+- **Repos** throw `Failure` on errors — Controllers catch them.
+- **Controllers** use `AsyncValue` for loading/error/data states.
+- **Views** use `ConsumerStatefulWidget` with `ref.watch()` in build, `ref.read()` in callbacks.
+- One Controller per feature. Split only if the feature grows complex.
 - Shared widgets go in `shared/widgets/`. Feature-specific widgets stay in the feature.
 
 ## Packages
 
 | Package | Purpose |
 |---------|---------|
-| flutter_bloc | State management |
-| equatable | Value equality for events/states |
+| flutter_riverpod | State management |
+| riverpod_annotation | Codegen annotations for providers |
+| riverpod_generator | Provider code generation |
 | dio | HTTP client |
-| get_it | Dependency injection |
 | go_router | Routing |
 | shared_preferences | Local storage |
 | json_serializable | JSON parsing code generation |
+| flutter_screenutil | Responsive sizing |
 
-flutter pub run build_runner build --delete-conflicting-outputs
+dart run build_runner build --delete-conflicting-outputs
