@@ -1,6 +1,6 @@
 import 'package:go_router/go_router.dart';
-import 'package:anchor/features/auth/views/login_view.dart';
-import 'package:anchor/features/auth/views/register_view.dart';
+import 'package:chatbee/features/auth/views/login_view.dart';
+import 'package:chatbee/features/auth/views/register_view.dart';
 
 /// Centralized routing.
 /// Add new routes here when you add new features.

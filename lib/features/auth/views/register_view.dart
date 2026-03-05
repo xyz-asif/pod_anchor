@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:anchor/features/auth/controllers/auth_controller.dart';
-import 'package:anchor/features/auth/widgets/auth_form.dart';
-import 'package:anchor/shared/widgets/app_snackbar.dart';
-import 'package:anchor/config/theme/text_styles.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/auth/widgets/auth_form.dart';
+import 'package:chatbee/shared/widgets/app_snackbar.dart';
+import 'package:chatbee/config/theme/text_styles.dart';
 
 class RegisterView extends ConsumerStatefulWidget {
   const RegisterView({super.key});

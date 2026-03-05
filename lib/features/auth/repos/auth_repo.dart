@@ -1,6 +1,6 @@
-import 'package:anchor/core/constants/api_endpoints.dart';
-import 'package:anchor/core/network/api_client.dart';
-import 'package:anchor/features/auth/models/user_model.dart';
+import 'package:chatbee/core/constants/api_endpoints.dart';
+import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_repo.g.dart';

@@ -1,4 +1,4 @@
-package com.anchor.anchor
+package com.asif.chat
 
 import io.flutter.embedding.android.FlutterActivity
 

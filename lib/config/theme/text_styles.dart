@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:anchor/core/constants/app_colors.dart';
+import 'package:chatbee/core/constants/app_colors.dart';
 
 /// All text styles in one place.
 /// Usage: AppTextStyles.heading

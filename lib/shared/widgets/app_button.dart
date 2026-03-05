@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:anchor/core/constants/app_colors.dart';
+import 'package:chatbee/core/constants/app_colors.dart';
 
 /// Reusable button used across the app.
 ///

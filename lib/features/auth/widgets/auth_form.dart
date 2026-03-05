@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:anchor/core/utils/validators.dart';
-import 'package:anchor/shared/widgets/app_button.dart';
-import 'package:anchor/shared/widgets/app_text_field.dart';
-import 'package:anchor/shared/widgets/secure_text_field.dart';
+import 'package:chatbee/core/utils/validators.dart';
+import 'package:chatbee/shared/widgets/app_button.dart';
+import 'package:chatbee/shared/widgets/app_text_field.dart';
+import 'package:chatbee/shared/widgets/secure_text_field.dart';
 
 /// Reusable auth form. Used by both Login and Register views.
 ///

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:anchor/config/theme/app_theme.dart';
-import 'package:anchor/core/routes/app_router.dart';
+import 'package:chatbee/config/theme/app_theme.dart';
+import 'package:chatbee/core/routes/app_router.dart';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

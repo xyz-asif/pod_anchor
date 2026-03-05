@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "681751033005",
+    "project_id": "chat-bee-c3f66",
+    "storage_bucket": "chat-bee-c3f66.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:681751033005:android:695615447bd34fcdeec224",
+        "android_client_info": {
+          "package_name": "com.asif.chat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "681751033005-053s2mh6rm0alivsiiu1qri5025tckop.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCi4Msmvb2nLO6IsLc-H61skTD_k-u-wv4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "681751033005-053s2mh6rm0alivsiiu1qri5025tckop.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "681751033005-7bn376a5h3jsakrbet8ioqjc62okao4b.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.anchor.anchor"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

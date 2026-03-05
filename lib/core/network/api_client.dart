@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:anchor/core/constants/api_endpoints.dart';
-import 'package:anchor/core/errors/failures.dart';
-import 'package:anchor/shared/models/api_response.dart';
+import 'package:chatbee/core/constants/api_endpoints.dart';
+import 'package:chatbee/core/errors/failures.dart';
+import 'package:chatbee/shared/models/api_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'api_client.g.dart';
