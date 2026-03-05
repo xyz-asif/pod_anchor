@@ -1,9 +1,10 @@
 import 'package:go_router/go_router.dart';
 import 'package:chatbee/features/auth/views/login_view.dart';
-import 'package:chatbee/features/auth/views/register_view.dart';
+import 'package:chatbee/features/home/screens/home_screen.dart';
+import 'package:chatbee/features/chat/screens/chat_screen.dart';
+import 'package:chatbee/features/profile/screens/user_search_screen.dart';
 
 /// Centralized routing.
-/// Add new routes here when you add new features.
 class AppRouter {
   AppRouter._();
 
@@ -12,16 +13,22 @@ class AppRouter {
     routes: [
       // ── Auth ──
       GoRoute(path: '/login', builder: (context, state) => const LoginView()),
+
+      // ── Home (bottom nav: chats, friends, profile) ──
+      GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+
+      // ── Chat ──
       GoRoute(
-        path: '/register',
-        builder: (context, state) => const RegisterView(),
+        path: '/chat/:roomId',
+        builder: (context, state) =>
+            ChatScreen(roomId: state.pathParameters['roomId']!),
       ),
 
-      // ── Add more feature routes below ──
-      // GoRoute(
-      //   path: '/home',
-      //   builder: (context, state) => const HomeView(),
-      // ),
+      // ── User Search ──
+      GoRoute(
+        path: '/search',
+        builder: (context, state) => const UserSearchScreen(),
+      ),
     ],
   );
 }

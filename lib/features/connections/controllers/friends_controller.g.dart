@@ -1,29 +1,31 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'notification_service.dart';
+part of 'friends_controller.dart';
 
 // **************************************************************************
 // RiverpodGenerator
 // **************************************************************************
 
-String _$notificationServiceHash() =>
-    r'cda5ea9d196dce85bee56839a4a0f035021752e3';
+String _$friendsControllerHash() => r'b9000adcab6c66a6d68a47ade2490d196e80495d';
 
-/// See also [notificationService].
-@ProviderFor(notificationService)
-final notificationServiceProvider =
-    AutoDisposeProvider<NotificationService>.internal(
-      notificationService,
-      name: r'notificationServiceProvider',
+/// Manages the accepted friends list.
+///
+/// Copied from [FriendsController].
+@ProviderFor(FriendsController)
+final friendsControllerProvider =
+    AutoDisposeAsyncNotifierProvider<
+      FriendsController,
+      List<ConnectionModel>
+    >.internal(
+      FriendsController.new,
+      name: r'friendsControllerProvider',
       debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
           ? null
-          : _$notificationServiceHash,
+          : _$friendsControllerHash,
       dependencies: null,
       allTransitiveDependencies: null,
     );
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef NotificationServiceRef = AutoDisposeProviderRef<NotificationService>;
+typedef _$FriendsController = AutoDisposeAsyncNotifier<List<ConnectionModel>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

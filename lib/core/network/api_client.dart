@@ -58,6 +58,11 @@ class ApiClient {
     return _request(() => _dio.post(path, data: data));
   }
 
+  /// PATCH request
+  Future<ApiResponse> patch(String path, {dynamic data}) async {
+    return _request(() => _dio.patch(path, data: data));
+  }
+
   /// PUT request
   Future<ApiResponse> put(String path, {dynamic data}) async {
     return _request(() => _dio.put(path, data: data));
@@ -75,7 +80,7 @@ class ApiClient {
       final response = await request();
       final apiResponse = ApiResponse.fromJson(response.data);
 
-      if (!apiResponse.status) {
+      if (!apiResponse.success) {
         throw ServerFailure(apiResponse.message);
       }
 

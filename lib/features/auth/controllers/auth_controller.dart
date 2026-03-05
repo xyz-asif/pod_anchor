@@ -1,36 +1,67 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:chatbee/features/auth/repos/auth_repo.dart';
+import 'package:chatbee/core/services/websocket_service.dart';
 
 part 'auth_controller.g.dart';
 
-/// AuthController handles all auth logic using Riverpod AsyncNotifier.
+/// AuthController handles Google Sign-In and session management.
 ///
 /// Flow: View calls method → Controller calls Repo → state updates → View rebuilds.
-@riverpod
+/// After successful sign-in, connects WebSocket for real-time events.
+@Riverpod(keepAlive: true)
 class AuthController extends _$AuthController {
   @override
   FutureOr<UserModel?> build() => null;
 
-  /// Login with email and password.
-  Future<void> login({required String email, required String password}) async {
+  /// Sign in with Google.
+  Future<void> signInWithGoogle() async {
     state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final user = await ref.read(authRepoProvider).signInWithGoogle();
+
+      // Connect WebSocket after successful sign-in
+      final token = await ref.read(authRepoProvider).getIdToken();
+      if (token != null) {
+        ref.read(webSocketServiceProvider).connect(token);
+      }
+
+      return user;
+    });
+  }
+
+  /// Refresh user profile from backend.
+  Future<void> refreshProfile() async {
     state = await AsyncValue.guard(
-      () => ref.read(authRepoProvider).login(email: email, password: password),
+      () => ref.read(authRepoProvider).getMyProfile(),
     );
   }
 
-  /// Register a new user.
-  Future<void> register({
-    required String name,
-    required String email,
-    required String password,
-  }) async {
+  /// Sign out and disconnect WebSocket.
+  Future<void> signOut() async {
+    ref.read(webSocketServiceProvider).disconnect();
+    await ref.read(authRepoProvider).signOut();
+    state = const AsyncValue.data(null);
+  }
+
+  /// Check if user is signed in and restore session.
+  Future<void> restoreSession() async {
+    final repo = ref.read(authRepoProvider);
+    if (!repo.isSignedIn) return;
+
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(
-      () => ref
-          .read(authRepoProvider)
-          .register(name: name, email: email, password: password),
-    );
+    state = await AsyncValue.guard(() async {
+      // Refresh token and fetch profile
+      await repo.refreshToken();
+      final user = await repo.getMyProfile();
+
+      // Reconnect WebSocket
+      final token = await repo.getIdToken();
+      if (token != null) {
+        ref.read(webSocketServiceProvider).connect(token);
+      }
+
+      return user;
+    });
   }
 }

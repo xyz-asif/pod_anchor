@@ -1,26 +1,26 @@
-/// Generic wrapper for API responses.
+/// Generic wrapper for ALL API responses.
 ///
-/// Most APIs return this shape:
+/// The backend returns this shape:
 /// {
-///   "status": true,
-///   "message": "Success",
+///   "success": true,
+///   "statusCode": 200,
+///   "message": "Operation successful",
 ///   "data": { ... }
 /// }
 ///
 /// Usage:
 ///   final apiResponse = ApiResponse.fromJson(response.data);
-///   if (apiResponse.status) {
+///   if (apiResponse.success) {
 ///     final user = UserModel.fromJson(apiResponse.data);
 ///   }
-
 class ApiResponse {
-  final bool status;
+  final bool success;
   final int? statusCode;
   final String message;
   final dynamic data;
 
   const ApiResponse({
-    required this.status,
+    required this.success,
     this.statusCode,
     required this.message,
     this.data,
@@ -28,8 +28,8 @@ class ApiResponse {
 
   factory ApiResponse.fromJson(Map<String, dynamic> json) {
     return ApiResponse(
-      status: json['status'] ?? false,
-      statusCode: json['status_code'],
+      success: json['success'] ?? false,
+      statusCode: json['statusCode'],
       message: json['message'] ?? '',
       data: json['data'],
     );
