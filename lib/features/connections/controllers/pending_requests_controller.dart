@@ -1,3 +1,4 @@
+import 'package:chatbee/features/connections/controllers/friends_controller.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/connections/models/connection_model.dart';
 import 'package:chatbee/features/connections/repos/connection_repo.dart';

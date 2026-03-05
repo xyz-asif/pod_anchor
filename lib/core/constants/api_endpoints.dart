@@ -4,7 +4,7 @@ class ApiEndpoints {
   ApiEndpoints._();
 
   // Base URL — change per environment
-  static const String baseUrl = 'http://localhost:8080/api/v1';
+  static const String baseUrl = 'http://192.168.0.82:8080/api/v1';
 
   // ── Users ──
   static const String usersMe = '/users/me';
@@ -56,7 +56,7 @@ class ApiEndpoints {
   // ── WebSocket ──
   static const String webSocket = '/chat/ws';
   static String webSocketUrl(String token) =>
-      'ws://localhost:8080/api/v1/chat/ws?token=$token';
+      'ws://192.168.0.82:8080/api/v1/chat/ws?token=$token';
 
   // ── Health ──
   static const String health = '/health';

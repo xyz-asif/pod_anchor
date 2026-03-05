@@ -63,6 +63,7 @@ dependencies:
   # Utilities
   intl:
   timeago:
+  flutter_secure_storage: ^10.0.0
 
 dev_dependencies:
   flutter_test:

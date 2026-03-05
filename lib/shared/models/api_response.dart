@@ -31,7 +31,7 @@ class ApiResponse {
       success: json['success'] ?? false,
       statusCode: json['statusCode'],
       message: json['message'] ?? '',
-      data: json['data'],
+      data: json['data'] ?? [],
     );
   }
 }

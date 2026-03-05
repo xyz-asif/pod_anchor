@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/shared/models/api_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 part 'api_client.g.dart';
 
@@ -15,8 +17,14 @@ part 'api_client.g.dart';
 ///   final user = UserModel.fromJson(response.data);
 class ApiClient {
   late final Dio _dio;
+  late final FlutterSecureStorage _secureStorage;
+  static const String _tokenKey = 'auth_token';
 
-  ApiClient() {
+  // Singleton pattern
+  static final ApiClient _instance = ApiClient._internal();
+
+  ApiClient._internal() {
+    _secureStorage = const FlutterSecureStorage();
     _dio = Dio(
       BaseOptions(
         baseUrl: ApiEndpoints.baseUrl,
@@ -33,16 +41,38 @@ class ApiClient {
     _dio.interceptors.add(
       LogInterceptor(requestBody: true, responseBody: true),
     );
+
+    print('🔧 ApiClient instance created');
   }
 
-  /// Set auth token after login
-  void setToken(String token) {
+  // Factory constructor to return singleton
+  factory ApiClient() {
+    return _instance;
+  }
+
+  /// Initialize: Load saved token from secure storage and set in headers
+  Future<void> initialize() async {
+    final token = await _secureStorage.read(key: _tokenKey);
+    if (token != null) {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+      print('Token loaded from secure storage and set in headers');
+    } else {
+      print('No saved token found in secure storage');
+    }
+  }
+
+  /// Set auth token after login and save to secure storage
+  Future<void> setToken(String token) async {
     _dio.options.headers['Authorization'] = 'Bearer $token';
+    await _secureStorage.write(key: _tokenKey, value: token);
+    print('💾 Token saved to storage: ${token.substring(0, 20)}...');
   }
 
   /// Remove auth token on logout
-  void clearToken() {
+  Future<void> clearToken() async {
     _dio.options.headers.remove('Authorization');
+    await _secureStorage.delete(key: _tokenKey);
+    print('🗑️ Token cleared from storage and headers');
   }
 
   /// GET request
