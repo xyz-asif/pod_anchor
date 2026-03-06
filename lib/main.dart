@@ -10,6 +10,7 @@ import 'package:chatbee/core/providers/auth_provider.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 
+//this is phase 2
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
