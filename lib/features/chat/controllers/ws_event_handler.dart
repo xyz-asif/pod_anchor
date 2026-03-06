@@ -7,6 +7,7 @@ import 'package:chatbee/core/services/websocket_service.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/chat/controllers/message_controller.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 
 part 'ws_event_handler.g.dart';
 
@@ -41,6 +42,15 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
       case WsEventType.reactionUpdated:
         _handleReactionUpdated(ref, event);
         break;
+      case WsEventType.userOnline:
+        _handleUserOnline(ref, event, true);
+        break;
+      case WsEventType.userOffline:
+        _handleUserOnline(ref, event, false);
+        break;
+      case WsEventType.roomUpdated:
+        _handleRoomUpdated(ref, event);
+        break;
       case WsEventType.typingStart:
       case WsEventType.typingStop:
         // Handled by TypingController below
@@ -59,6 +69,12 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
 void _handleNewMessage(Ref ref, WsEvent event) {
   try {
     final message = MessageResponse.fromJson(event.payload);
+
+    // If I sent this message, ignore it (already handled optimistically + REST)
+    final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
+    if (currentUserId != null && message.senderId == currentUserId) {
+      return;
+    }
 
     // Append to message list if that room is open
     try {
@@ -135,6 +151,41 @@ void _handleReactionUpdated(Ref ref, WsEvent event) {
         .read(messageControllerProvider(event.roomId).notifier)
         .updateReaction(messageId, userId, emoji);
   } catch (_) {}
+}
+
+void _handleUserOnline(Ref ref, WsEvent event, bool isOnline) {
+  final userId = event.payload['userId'] as String?;
+  if (userId == null) return;
+
+  try {
+    ref
+        .read(chatListControllerProvider.notifier)
+        .updatePresence(userId, isOnline: isOnline);
+  } catch (_) {}
+}
+
+void _handleRoomUpdated(Ref ref, WsEvent event) {
+  final lastMessage = event.payload['lastMessage'] as String?;
+  final lastUpdatedStr = event.payload['lastUpdated'] as String?;
+  final lastSenderId = event.payload['lastSenderId'] as String?;
+
+  if (lastMessage == null || lastUpdatedStr == null || lastSenderId == null) {
+    return;
+  }
+
+  try {
+    final lastUpdated = DateTime.parse(lastUpdatedStr);
+    ref
+        .read(chatListControllerProvider.notifier)
+        .handleRoomUpdated(
+          roomId: event.roomId,
+          lastMessage: lastMessage,
+          lastUpdated: lastUpdated,
+          lastSenderId: lastSenderId,
+        );
+  } catch (e) {
+    log('Error handling room_updated: $e', name: 'WS');
+  }
 }
 
 /// Typing state for a specific room.

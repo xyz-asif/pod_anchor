@@ -26,6 +26,8 @@ class ConnectionModel {
   final String senderId;
   final String receiverId;
   final String status;
+  final String? senderDisplayName;
+  final String? senderPhotoURL;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -34,6 +36,8 @@ class ConnectionModel {
     required this.senderId,
     required this.receiverId,
     this.status = 'pending',
+    this.senderDisplayName,
+    this.senderPhotoURL,
     this.createdAt,
     this.updatedAt,
   });
@@ -51,6 +55,8 @@ class ConnectionModel {
     String? senderId,
     String? receiverId,
     String? status,
+    String? senderDisplayName,
+    String? senderPhotoURL,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -59,6 +65,8 @@ class ConnectionModel {
       senderId: senderId ?? this.senderId,
       receiverId: receiverId ?? this.receiverId,
       status: status ?? this.status,
+      senderDisplayName: senderDisplayName ?? this.senderDisplayName,
+      senderPhotoURL: senderPhotoURL ?? this.senderPhotoURL,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

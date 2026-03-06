@@ -8,9 +8,7 @@ part of 'auth_repo.dart';
 
 String _$authRepoHash() => r'81a291c005a5aadc13b3f016837b5d595dbaf438';
 
-/// Riverpod provider for AuthRepo.
-///
-/// Copied from [authRepo].
+/// See also [authRepo].
 @ProviderFor(authRepo)
 final authRepoProvider = AutoDisposeProvider<AuthRepo>.internal(
   authRepo,

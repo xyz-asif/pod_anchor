@@ -7,7 +7,7 @@ part of 'chat_list_controller.dart';
 // **************************************************************************
 
 String _$chatListControllerHash() =>
-    r'8639266a88e73165b09ab98abf616c4f38422153';
+    r'98b0ed52a54aa65ee4b66e0fb47fe00c9d761cb4';
 
 /// Manages the chat room list state (main chat list screen).
 ///
@@ -15,6 +15,7 @@ String _$chatListControllerHash() =>
 /// - Refresh (pull-to-refresh)
 /// - Optimistic room reordering on new message
 /// - Unread count updates
+/// - Sorted by lastUpdated (newest first)
 ///
 /// Copied from [ChatListController].
 @ProviderFor(ChatListController)

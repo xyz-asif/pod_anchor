@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:chatbee/features/auth/repos/auth_repo.dart';
 import 'package:chatbee/core/services/websocket_service.dart';
+import 'package:chatbee/core/providers/auth_provider.dart';
 
 part 'auth_controller.g.dart';
 
@@ -26,6 +27,9 @@ class AuthController extends _$AuthController {
         ref.read(webSocketServiceProvider).connect(token);
       }
 
+      // Update auth state so the router redirects to /home
+      ref.read(authNotifierProvider).login();
+
       return user;
     });
   }
@@ -42,6 +46,9 @@ class AuthController extends _$AuthController {
     ref.read(webSocketServiceProvider).disconnect();
     await ref.read(authRepoProvider).signOut();
     state = const AsyncValue.data(null);
+
+    // Update auth state so the router redirects to /login
+    ref.read(authNotifierProvider).logout();
   }
 
   /// Check if user is signed in and restore session.

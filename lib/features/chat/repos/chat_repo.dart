@@ -3,6 +3,7 @@ import 'package:chatbee/core/network/api_client.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 part 'chat_repo.g.dart';
 
@@ -37,20 +38,30 @@ class ChatRepo {
 
   // ── Messages ──
 
-  /// Get message history for a room (oldest-first, paginated).
-  Future<List<MessageResponse>> getMessages({
+  /// Get message history for a room (paginated with cursor).
+  Future<(List<MessageResponse>, bool)> getMessages({
     required String roomId,
     int limit = 50,
-    int offset = 0,
+    String? before,
   }) async {
+    final query = <String, dynamic>{'limit': limit};
+    if (before != null) query['before'] = before;
+
     final response = await apiClient.get(
       ApiEndpoints.chatRoomMessages(roomId),
-      queryParameters: {'limit': limit, 'offset': offset},
+      queryParameters: query,
     );
-    final list = response.data as List;
-    return list
+
+    // New V2 format: { "messages": [...], "hasMore": true }
+    final jsonDate = response.data as Map<String, dynamic>;
+    final messagesList = jsonDate['messages'] as List;
+    final hasMore = jsonDate['hasMore'] as bool? ?? false;
+
+    final messages = messagesList
         .map((e) => MessageResponse.fromJson(e as Map<String, dynamic>))
         .toList();
+
+    return (messages, hasMore);
   }
 
   /// Send a message in a room.
@@ -110,6 +121,6 @@ class ChatRepo {
 
 /// Riverpod provider for ChatRepo.
 @riverpod
-ChatRepo chatRepo(ChatRepoRef ref) {
+ChatRepo chatRepo(Ref ref) {
   return ChatRepo(apiClient: ref.read(apiClientProvider));
 }

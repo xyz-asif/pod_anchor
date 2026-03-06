@@ -7,9 +7,12 @@ part of 'pending_requests_controller.dart';
 // **************************************************************************
 
 String _$pendingRequestsControllerHash() =>
-    r'3cc7b9deeb74c9a5749a738263b0bc38314127b9';
+    r'ca6f24afdcc0f546212fc52fb2df36f7401601a2';
 
 /// Manages pending friend requests received by the current user.
+///
+/// Uses optimistic removal: items disappear instantly on accept/reject,
+/// and are restored if the API call fails.
 ///
 /// Copied from [PendingRequestsController].
 @ProviderFor(PendingRequestsController)

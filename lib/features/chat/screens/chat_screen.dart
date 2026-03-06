@@ -41,6 +41,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Start listening to WS events
     ref.read(wsEventHandlerProvider);
 
+    // Mark room as read explicitly when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
+    });
+
     _scrollController.addListener(_onScroll);
   }
 
@@ -57,8 +62,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels <=
-        _scrollController.position.minScrollExtent + 50) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 50) {
       ref.read(messageControllerProvider(widget.roomId).notifier).loadOlder();
     }
   }
@@ -94,17 +99,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _isTyping = false;
       ref.read(typingControllerProvider(widget.roomId).notifier).stopTyping();
     }
-
-    // Scroll to bottom
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 60,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   void _setReply(String messageId, String content) {
@@ -128,7 +122,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final currentUserId =
         ref.watch(authControllerProvider).valueOrNull?.id ?? '';
 
-    // Error snackbar
+    // Error snackbar & active reading
     ref.listen(messageControllerProvider(widget.roomId), (prev, next) {
       next.whenOrNull(
         error: (e, _) => AppSnackbar.show(
@@ -136,6 +130,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           message: e.toString(),
           type: SnackbarType.error,
         ),
+        data: (messages) {
+          final prevList = prev?.valueOrNull ?? [];
+          if (messages.length > prevList.length && messages.isNotEmpty) {
+            final lastMsg =
+                messages.last; // state is chronological, last is newest
+            // If the newest incoming message is from someone else and unread, mark it read
+            if (lastMsg.senderId != currentUserId && lastMsg.status != 'read') {
+              ref
+                  .read(messageControllerProvider(widget.roomId).notifier)
+                  .markAsRead();
+            }
+          }
+        },
       );
     });
 
@@ -189,20 +196,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   );
                 }
 
+                // Reverse messages for bottom-to-top layout
+                final reversedMessages = messages.reversed.toList();
+
                 return ListView.builder(
                   controller: _scrollController,
+                  reverse: true,
                   padding: EdgeInsets.symmetric(
                     horizontal: 12.w,
                     vertical: 8.h,
                   ),
-                  itemCount: messages.length,
+                  itemCount: reversedMessages.length,
                   itemBuilder: (context, index) {
-                    final message = messages[index];
+                    final message = reversedMessages[index];
                     final isMe = message.senderId == currentUserId;
+
+                    // Since it's reversed, the "previous" message in chronological order
+                    // is actually at index + 1
+                    final isLastInGroup = index == reversedMessages.length - 1;
                     final showDate =
-                        index == 0 ||
+                        isLastInGroup ||
                         _isDifferentDay(
-                          messages[index - 1].createdAt,
+                          reversedMessages[index + 1].createdAt,
                           message.createdAt,
                         );
 
@@ -536,13 +551,14 @@ class _StatusIcon extends StatelessWidget {
       case 'read':
         return Icon(
           Icons.done_all_rounded,
-          size: 14.r,
+          size: 16.r,
           color: Colors.lightBlueAccent,
         );
       case 'delivered':
-        return Icon(Icons.done_all_rounded, size: 14.r, color: Colors.white60);
-      default: // sent
-        return Icon(Icons.done_rounded, size: 14.r, color: Colors.white60);
+        return Icon(Icons.done_all_rounded, size: 16.r, color: Colors.white70);
+      case 'sent':
+      default:
+        return Icon(Icons.done_rounded, size: 16.r, color: Colors.white70);
     }
   }
 }

@@ -1,6 +1,8 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
+import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 
 part 'message_controller.g.dart';
 
@@ -17,38 +19,50 @@ class MessageController extends _$MessageController {
 
   @override
   FutureOr<List<MessageResponse>> build(String roomId) async {
-    final messages = await ref
-        .read(chatRepoProvider)
-        .getMessages(roomId: roomId);
-    _hasMore = messages.length >= 50;
+    final result = await ref.read(chatRepoProvider).getMessages(roomId: roomId);
 
-    // Mark room as read on first load
-    ref.read(chatRepoProvider).markRoomAsRead(roomId);
+    _hasMore = result.$2;
+    final messages = result.$1;
 
     return messages;
   }
 
-  /// Load older messages (pagination).
+  /// Mark the room as read (called when screen opens)
+  void markAsRead() {
+    ref.read(chatRepoProvider).markRoomAsRead(roomId);
+  }
+
+  /// Load older messages (pagination with cursor).
   Future<void> loadOlder() async {
     if (!_hasMore) return;
 
     final current = state.valueOrNull ?? [];
-    final older = await ref
+    if (current.isEmpty) return;
+
+    // current list is chronological [oldest, ..., newest]
+    // fetch messages older than the currently oldest message
+    final result = await ref
         .read(chatRepoProvider)
-        .getMessages(roomId: roomId, offset: current.length);
-    _hasMore = older.length >= 50;
+        .getMessages(roomId: roomId, before: current.first.id);
+
+    _hasMore = result.$2;
+    final older = result.$1;
+
+    // Prepend the newly fetched older messages
     state = AsyncValue.data([...older, ...current]);
   }
 
   /// Send a message. Appends optimistically (pending), then replaces with server response.
   Future<void> sendMessage(String content, {String? replyToId}) async {
     final current = state.valueOrNull ?? [];
+    final currentUserId =
+        ref.read(authControllerProvider).valueOrNull?.id ?? '';
 
     // Optimistic: add a temporary message
     final optimistic = MessageResponse(
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
       roomId: roomId,
-      senderId: '', // will be replaced
+      senderId: currentUserId, // Use actual user ID instead of empty string
       content: content,
       status: 'sent',
       createdAt: DateTime.now(),
@@ -65,6 +79,11 @@ class MessageController extends _$MessageController {
       state = AsyncValue.data(
         updated.map((m) => m.id == optimistic.id ? sent : m).toList(),
       );
+
+      // Update chat list preview with sender's own message
+      ref
+          .read(chatListControllerProvider.notifier)
+          .updateLastMessage(roomId, lastMessage: content);
     } catch (e) {
       // Remove optimistic on failure
       final updated = state.valueOrNull ?? [];

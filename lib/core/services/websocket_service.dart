@@ -18,7 +18,10 @@ enum WsEventType {
   messageDeleted,
   roomRead,
   typingStart,
-  typingStop;
+  typingStop,
+  userOnline,
+  userOffline,
+  roomUpdated;
 
   static WsEventType? fromString(String? value) {
     switch (value) {
@@ -38,6 +41,12 @@ enum WsEventType {
         return WsEventType.typingStart;
       case 'typing_stop':
         return WsEventType.typingStop;
+      case 'user_online':
+        return WsEventType.userOnline;
+      case 'user_offline':
+        return WsEventType.userOffline;
+      case 'room_updated':
+        return WsEventType.roomUpdated;
       default:
         return null;
     }
@@ -61,6 +70,12 @@ enum WsEventType {
         return 'typing_start';
       case WsEventType.typingStop:
         return 'typing_stop';
+      case WsEventType.userOnline:
+        return 'user_online';
+      case WsEventType.userOffline:
+        return 'user_offline';
+      case WsEventType.roomUpdated:
+        return 'room_updated';
     }
   }
 }
@@ -92,6 +107,7 @@ class WsEvent {
 ///
 /// Features:
 /// - Auto-reconnect on disconnect with exponential backoff
+/// - Ping/pong keepalive every 30s to prevent idle disconnects
 /// - Parse incoming events into typed [WsEvent] objects
 /// - Expose a broadcast stream for controllers to listen to
 /// - Send typing indicators
@@ -99,10 +115,12 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final _eventController = StreamController<WsEvent>.broadcast();
   Timer? _reconnectTimer;
+  Timer? _pingTimer;
   String? _token;
   bool _isConnected = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
+  static const Duration _pingInterval = Duration(seconds: 30);
 
   /// Stream of parsed WebSocket events.
   Stream<WsEvent> get events => _eventController.stream;
@@ -120,24 +138,33 @@ class WebSocketService {
   void _doConnect() {
     if (_token == null) return;
 
+    // Close old channel to prevent resource leaks
+    _closeChannel();
+
     try {
       final wsUrl = Uri.parse(ApiEndpoints.webSocketUrl(_token!));
       _channel = WebSocketChannel.connect(wsUrl);
 
       _channel!.stream.listen(
         (data) {
-          _isConnected = true;
+          if (!_isConnected) {
+            _isConnected = true;
+            _startPingTimer();
+            log('WebSocket connected', name: 'WS');
+          }
           _reconnectAttempts = 0;
           _handleMessage(data);
         },
         onError: (error) {
           log('WebSocket error: $error', name: 'WS');
           _isConnected = false;
+          _stopPingTimer();
           _scheduleReconnect();
         },
         onDone: () {
           log('WebSocket disconnected', name: 'WS');
           _isConnected = false;
+          _stopPingTimer();
           _scheduleReconnect();
         },
       );
@@ -155,6 +182,10 @@ class WebSocketService {
   void _handleMessage(dynamic data) {
     try {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
+
+      // Ignore pong responses from server
+      if (json['type'] == 'pong') return;
+
       final event = WsEvent.fromJson(json);
       _eventController.add(event);
       log(
@@ -164,6 +195,29 @@ class WebSocketService {
     } catch (e) {
       log('WS message parse error: $e', name: 'WS');
     }
+  }
+
+  /// Start periodic ping to keep connection alive.
+  void _startPingTimer() {
+    _stopPingTimer();
+    _pingTimer = Timer.periodic(_pingInterval, (_) {
+      if (_isConnected && _channel != null) {
+        try {
+          _channel!.sink.add(jsonEncode({'type': 'ping'}));
+        } catch (e) {
+          log('Ping failed: $e', name: 'WS');
+          _isConnected = false;
+          _stopPingTimer();
+          _scheduleReconnect();
+        }
+      }
+    });
+  }
+
+  /// Stop the ping timer.
+  void _stopPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
   }
 
   void _scheduleReconnect() {
@@ -186,7 +240,11 @@ class WebSocketService {
   /// Send a raw JSON message over WebSocket.
   void send(Map<String, dynamic> message) {
     if (_channel != null && _isConnected) {
-      _channel!.sink.add(jsonEncode(message));
+      try {
+        _channel!.sink.add(jsonEncode(message));
+      } catch (e) {
+        log('WS send error: $e', name: 'WS');
+      }
     }
   }
 
@@ -200,12 +258,20 @@ class WebSocketService {
     send({'type': 'typing_stop', 'roomId': roomId});
   }
 
-  /// Disconnect and clean up.
-  void disconnect() {
+  /// Close the WebSocket channel without resetting token.
+  void _closeChannel() {
+    _stopPingTimer();
     _reconnectTimer?.cancel();
-    _channel?.sink.close();
+    try {
+      _channel?.sink.close();
+    } catch (_) {}
     _channel = null;
     _isConnected = false;
+  }
+
+  /// Disconnect and clean up.
+  void disconnect() {
+    _closeChannel();
     _token = null;
   }
 
