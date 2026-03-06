@@ -197,4 +197,87 @@ class MessageController extends _$MessageController {
       }).toList(),
     );
   }
+
+  /// Edit a message remotely and locally.
+  Future<void> editMessageRemote(String messageId, String newContent) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    final oldMsgList = current.where((m) => m.id == messageId).toList();
+    if (oldMsgList.isEmpty) return;
+    final oldMsg = oldMsgList.first;
+
+    // Optimistically update locally
+    editMessage(messageId, newContent);
+
+    try {
+      await ref
+          .read(chatRepoProvider)
+          .editMessage(messageId: messageId, content: newContent);
+    } catch (e) {
+      // Revert on failure
+      final updated = state.valueOrNull ?? [];
+      state = AsyncValue.data(
+        updated.map((m) => m.id == messageId ? oldMsg : m).toList(),
+      );
+      rethrow;
+    }
+  }
+
+  /// Delete a message remotely and locally.
+  Future<void> deleteMessageRemote(String messageId) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    final oldMsgList = current.where((m) => m.id == messageId).toList();
+    if (oldMsgList.isEmpty) return;
+    final oldMsg = oldMsgList.first;
+
+    // Optimistically update locally
+    deleteMessage(messageId);
+
+    try {
+      await ref.read(chatRepoProvider).deleteMessage(messageId);
+    } catch (e) {
+      // Revert on failure
+      final updated = state.valueOrNull ?? [];
+      state = AsyncValue.data(
+        updated.map((m) => m.id == messageId ? oldMsg : m).toList(),
+      );
+      rethrow;
+    }
+  }
+
+  /// Toggle a reaction remotely and locally.
+  Future<void> toggleReactionRemote(String messageId, String emoji) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    final currentUserId =
+        ref.read(authControllerProvider).valueOrNull?.id ?? '';
+    if (currentUserId.isEmpty) return;
+
+    final oldMsgList = current.where((m) => m.id == messageId).toList();
+    if (oldMsgList.isEmpty) return;
+    final oldMsg = oldMsgList.first;
+
+    // Check existing reaction to see if we are removing it
+    final exists = oldMsg.reactions[currentUserId] == emoji;
+
+    // Optimistically update locally
+    updateReaction(messageId, currentUserId, exists ? '' : emoji);
+
+    try {
+      await ref
+          .read(chatRepoProvider)
+          .toggleReaction(messageId: messageId, emoji: emoji);
+    } catch (e) {
+      // Revert on failure
+      final updated = state.valueOrNull ?? [];
+      state = AsyncValue.data(
+        updated.map((m) => m.id == messageId ? oldMsg : m).toList(),
+      );
+      rethrow;
+    }
+  }
 }

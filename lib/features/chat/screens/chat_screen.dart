@@ -32,6 +32,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
   String? _replyToId;
   String? _replyToContent;
+  String? _editingMessageId;
+  String? _editingContent;
   Timer? _typingDebounce;
   bool _isTyping = false;
 
@@ -87,12 +89,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
 
-    ref
-        .read(messageControllerProvider(widget.roomId).notifier)
-        .sendMessage(content, replyToId: _replyToId);
+    if (_editingMessageId != null) {
+      ref
+          .read(messageControllerProvider(widget.roomId).notifier)
+          .editMessageRemote(_editingMessageId!, content);
+    } else {
+      ref
+          .read(messageControllerProvider(widget.roomId).notifier)
+          .sendMessage(content, replyToId: _replyToId);
+    }
 
     _messageController.clear();
-    _clearReply();
+    _clearPreview();
 
     // Stop typing
     if (_isTyping) {
@@ -101,18 +109,106 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  void _clearPreview() {
+    setState(() {
+      _replyToId = null;
+      _replyToContent = null;
+      _editingMessageId = null;
+      _editingContent = null;
+      _messageController.clear();
+    });
+  }
+
   void _setReply(String messageId, String content) {
     setState(() {
       _replyToId = messageId;
       _replyToContent = content;
+      _editingMessageId = null;
+      _editingContent = null;
+      _messageController.clear();
     });
   }
 
-  void _clearReply() {
+  void _setEdit(String messageId, String content) {
     setState(() {
+      _editingMessageId = messageId;
+      _editingContent = content;
       _replyToId = null;
       _replyToContent = null;
+      _messageController.text = content;
     });
+  }
+
+  void _showActionMenu(MessageResponse message, bool isMe) {
+    if (message.isDeleted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: ['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) {
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        ref
+                            .read(
+                              messageControllerProvider(widget.roomId).notifier,
+                            )
+                            .toggleReactionRemote(message.id, emoji);
+                      },
+                      child: Text(emoji, style: TextStyle(fontSize: 28.sp)),
+                    );
+                  }).toList(),
+                ),
+              ),
+              Divider(height: 1, color: AppTheme.borderColor),
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: const Text('Reply'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _setReply(message.id, message.content);
+                },
+              ),
+              if (isMe) ...[
+                ListTile(
+                  leading: const Icon(Icons.edit_rounded),
+                  title: const Text('Edit'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _setEdit(message.id, message.content);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_rounded, color: Colors.red),
+                  title: const Text(
+                    'Delete',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ref
+                        .read(messageControllerProvider(widget.roomId).notifier)
+                        .deleteMessageRemote(message.id);
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -242,7 +338,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         _MessageBubble(
                           message: message,
                           isMe: isMe,
-                          onReply: () => _setReply(message.id, message.content),
+                          onLongPress: () => _showActionMenu(message, isMe),
                         ),
                       ],
                     );
@@ -252,8 +348,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
 
-          // Reply preview
-          if (_replyToContent != null)
+          // Action preview (reply/edit)
+          if (_replyToContent != null || _editingContent != null)
             Container(
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
               color: AppTheme.featureBackgroundColor,
@@ -269,19 +365,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child: Text(
-                      _replyToContent!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        color: AppTheme.textMediumColor,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _editingContent != null
+                              ? 'Editing message'
+                              : 'Replying to message',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          _editingContent ?? _replyToContent!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            color: AppTheme.textMediumColor,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
                     icon: Icon(Icons.close_rounded, size: 18.r),
-                    onPressed: _clearReply,
+                    onPressed: _clearPreview,
                   ),
                 ],
               ),
@@ -408,12 +521,12 @@ class _DateSeparator extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   final MessageResponse message;
   final bool isMe;
-  final VoidCallback onReply;
+  final VoidCallback onLongPress;
 
   const _MessageBubble({
     required this.message,
     required this.isMe,
-    required this.onReply,
+    required this.onLongPress,
   });
 
   @override
@@ -423,7 +536,7 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: onReply,
+        onLongPress: onLongPress,
         child: Container(
           constraints: BoxConstraints(maxWidth: 280.w),
           margin: EdgeInsets.only(
