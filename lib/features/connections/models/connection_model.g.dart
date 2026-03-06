@@ -14,6 +14,10 @@ ConnectionModel _$ConnectionModelFromJson(Map<String, dynamic> json) =>
       status: json['status'] as String? ?? 'pending',
       senderDisplayName: json['senderDisplayName'] as String?,
       senderPhotoURL: json['senderPhotoURL'] as String?,
+      senderEmail: json['senderEmail'] as String?,
+      receiverDisplayName: json['receiverDisplayName'] as String?,
+      receiverPhotoURL: json['receiverPhotoURL'] as String?,
+      receiverEmail: json['receiverEmail'] as String?,
       createdAt: json['createdAt'] == null
           ? null
           : DateTime.parse(json['createdAt'] as String),
@@ -30,6 +34,10 @@ Map<String, dynamic> _$ConnectionModelToJson(ConnectionModel instance) =>
       'status': instance.status,
       'senderDisplayName': instance.senderDisplayName,
       'senderPhotoURL': instance.senderPhotoURL,
+      'senderEmail': instance.senderEmail,
+      'receiverDisplayName': instance.receiverDisplayName,
+      'receiverPhotoURL': instance.receiverPhotoURL,
+      'receiverEmail': instance.receiverEmail,
       'createdAt': instance.createdAt?.toIso8601String(),
       'updatedAt': instance.updatedAt?.toIso8601String(),
     };

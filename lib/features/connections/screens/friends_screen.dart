@@ -312,7 +312,7 @@ class _PendingRequestsTab extends ConsumerWidget {
                         : null,
                   ),
                   title: Text(
-                    request.senderDisplayName ?? 'Friend Request',
+                    request.senderDisplayName ?? request.senderEmail ?? 'Friend Request',
                     style: TextStyle(
                       fontSize: 15.sp,
                       fontWeight: FontWeight.w600,
@@ -323,7 +323,9 @@ class _PendingRequestsTab extends ConsumerWidget {
                   subtitle: Text(
                     request.senderDisplayName != null
                         ? 'Wants to connect'
-                        : 'New connection request',
+                        : request.senderEmail != null
+                            ? 'New connection request'
+                            : 'New connection request',
                     style: TextStyle(
                       fontSize: 12.sp,
                       color: AppTheme.textMediumColor,

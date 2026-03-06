@@ -6,7 +6,7 @@ part of 'ws_event_handler.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$wsEventHandlerHash() => r'c9ba8a818f6089a7f54b8d50c3960d96eb20a30f';
+String _$wsEventHandlerHash() => r'2d476fe55f08b39671e8b977bbab39df23145205';
 
 /// Listens to WebSocket events and dispatches them to the correct controllers.
 ///
@@ -28,7 +28,7 @@ final wsEventHandlerProvider = StreamProvider<WsEvent>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef WsEventHandlerRef = StreamProviderRef<WsEvent>;
-String _$typingControllerHash() => r'cb0138c2ddac034186ef726bee562b1f4a56faf3';
+String _$typingControllerHash() => r'203d034a882c805abfd35dd067dd93b77e1940e9';
 
 /// Copied from Dart SDK
 class _SystemHash {

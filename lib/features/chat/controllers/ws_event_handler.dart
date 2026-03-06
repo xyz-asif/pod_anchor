@@ -53,7 +53,7 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
         break;
       case WsEventType.typingStart:
       case WsEventType.typingStop:
-        // Handled by TypingController below
+        _handleTyping(ref, event);
         break;
     }
   });
@@ -188,39 +188,35 @@ void _handleRoomUpdated(Ref ref, WsEvent event) {
   }
 }
 
+void _handleTyping(Ref ref, WsEvent event) {
+  final userId = event.payload['userId'] as String?;
+  if (userId == null) return;
+
+  try {
+    ref
+        .read(typingControllerProvider(event.roomId).notifier)
+        .handleRemoteTyping(userId, event.type == WsEventType.typingStart);
+  } catch (_) {}
+}
+
 /// Typing state for a specific room.
 /// Maps userId → true/false (typing or not).
 @riverpod
 class TypingController extends _$TypingController {
-  StreamSubscription<WsEvent>? _sub;
-
   @override
   Map<String, bool> build(String roomId) {
-    final wsService = ref.read(webSocketServiceProvider);
-
-    _sub = wsService.events
-        .where(
-          (e) =>
-              e.roomId == roomId &&
-              (e.type == WsEventType.typingStart ||
-                  e.type == WsEventType.typingStop),
-        )
-        .listen((event) {
-          final userId = event.payload['userId'] as String?;
-          if (userId == null) return;
-
-          final current = Map<String, bool>.from(state);
-          if (event.type == WsEventType.typingStart) {
-            current[userId] = true;
-          } else {
-            current.remove(userId);
-          }
-          state = current;
-        });
-
-    ref.onDispose(() => _sub?.cancel());
-
     return {};
+  }
+
+  /// Called by wsEventHandler when a remote typing event arrives.
+  void handleRemoteTyping(String userId, bool isTyping) {
+    final current = Map<String, bool>.from(state);
+    if (isTyping) {
+      current[userId] = true;
+    } else {
+      current.remove(userId);
+    }
+    state = current;
   }
 
   /// Send typing_start via WebSocket.

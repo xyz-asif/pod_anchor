@@ -28,6 +28,10 @@ class ConnectionModel {
   final String status;
   final String? senderDisplayName;
   final String? senderPhotoURL;
+  final String? senderEmail;
+  final String? receiverDisplayName;
+  final String? receiverPhotoURL;
+  final String? receiverEmail;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -38,6 +42,10 @@ class ConnectionModel {
     this.status = 'pending',
     this.senderDisplayName,
     this.senderPhotoURL,
+    this.senderEmail,
+    this.receiverDisplayName,
+    this.receiverPhotoURL,
+    this.receiverEmail,
     this.createdAt,
     this.updatedAt,
   });
@@ -57,6 +65,10 @@ class ConnectionModel {
     String? status,
     String? senderDisplayName,
     String? senderPhotoURL,
+    String? senderEmail,
+    String? receiverDisplayName,
+    String? receiverPhotoURL,
+    String? receiverEmail,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -67,6 +79,10 @@ class ConnectionModel {
       status: status ?? this.status,
       senderDisplayName: senderDisplayName ?? this.senderDisplayName,
       senderPhotoURL: senderPhotoURL ?? this.senderPhotoURL,
+      senderEmail: senderEmail ?? this.senderEmail,
+      receiverDisplayName: receiverDisplayName ?? this.receiverDisplayName,
+      receiverPhotoURL: receiverPhotoURL ?? this.receiverPhotoURL,
+      receiverEmail: receiverEmail ?? this.receiverEmail,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

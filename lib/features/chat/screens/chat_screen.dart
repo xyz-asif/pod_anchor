@@ -122,7 +122,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final currentUserId =
         ref.watch(authControllerProvider).valueOrNull?.id ?? '';
 
-    // Error snackbar & active reading
+    // Error snackbar & active reading & auto-scroll
     ref.listen(messageControllerProvider(widget.roomId), (prev, next) {
       next.whenOrNull(
         error: (e, _) => AppSnackbar.show(
@@ -140,6 +140,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ref
                   .read(messageControllerProvider(widget.roomId).notifier)
                   .markAsRead();
+            }
+
+            // Auto-scroll to bottom if user is near the end
+            if (_scrollController.hasClients &&
+                _scrollController.position.pixels <= 150) {
+              Future.delayed(const Duration(milliseconds: 50), () {
+                if (_scrollController.hasClients) {
+                  _scrollController.animateTo(
+                    0,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                  );
+                }
+              });
             }
           }
         },
@@ -355,10 +369,12 @@ class _DateSeparator extends StatelessWidget {
     final now = DateTime.now();
     final isToday =
         date.day == now.day && date.month == now.month && date.year == now.year;
-    final isYesterday =
-        date.day == now.day - 1 &&
-        date.month == now.month &&
-        date.year == now.year;
+    final isYesterday = () {
+      final yesterday = now.subtract(const Duration(days: 1));
+      return date.day == yesterday.day &&
+          date.month == yesterday.month &&
+          date.year == yesterday.year;
+    }();
 
     String label;
     if (isToday) {

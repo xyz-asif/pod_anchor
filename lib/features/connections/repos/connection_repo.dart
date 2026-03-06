@@ -22,19 +22,17 @@ class ConnectionRepo {
   }
 
   /// Accept a pending friend request.
-  Future<ConnectionModel> acceptRequest(String connectionId) async {
-    final response = await apiClient.post(
+  Future<void> acceptRequest(String connectionId) async {
+    await apiClient.post(
       ApiEndpoints.connectionAccept(connectionId),
     );
-    return ConnectionModel.fromJson(response.data);
   }
 
   /// Reject a pending friend request.
-  Future<ConnectionModel> rejectRequest(String connectionId) async {
-    final response = await apiClient.post(
+  Future<void> rejectRequest(String connectionId) async {
+    await apiClient.post(
       ApiEndpoints.connectionReject(connectionId),
     );
-    return ConnectionModel.fromJson(response.data);
   }
 
   /// List pending requests received by the current user.

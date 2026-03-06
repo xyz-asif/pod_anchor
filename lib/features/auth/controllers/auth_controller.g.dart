@@ -6,7 +6,7 @@ part of 'auth_controller.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$authControllerHash() => r'cf87f4f1c843ac0df1e983a38bb6a88efcc0ecf9';
+String _$authControllerHash() => r'269e0eb815c5286945751f5205ad966be260b379';
 
 /// AuthController handles Google Sign-In and session management.
 ///

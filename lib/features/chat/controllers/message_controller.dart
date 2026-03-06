@@ -13,9 +13,10 @@ part 'message_controller.g.dart';
 /// - Optimistic message sending
 /// - Append from WebSocket
 /// - Edit/delete/reaction updates
-@riverpod
+@Riverpod(keepAlive: true)
 class MessageController extends _$MessageController {
   bool _hasMore = true;
+  bool _isLoadingOlder = false;
 
   @override
   FutureOr<List<MessageResponse>> build(String roomId) async {
@@ -34,22 +35,30 @@ class MessageController extends _$MessageController {
 
   /// Load older messages (pagination with cursor).
   Future<void> loadOlder() async {
-    if (!_hasMore) return;
+    if (!_hasMore || _isLoadingOlder) return;
+    _isLoadingOlder = true;
 
-    final current = state.valueOrNull ?? [];
-    if (current.isEmpty) return;
+    try {
+      final current = state.valueOrNull ?? [];
+      if (current.isEmpty) {
+        _isLoadingOlder = false;
+        return;
+      }
 
-    // current list is chronological [oldest, ..., newest]
-    // fetch messages older than the currently oldest message
-    final result = await ref
-        .read(chatRepoProvider)
-        .getMessages(roomId: roomId, before: current.first.id);
+      // current list is chronological [oldest, ..., newest]
+      // fetch messages older than the currently oldest message
+      final result = await ref
+          .read(chatRepoProvider)
+          .getMessages(roomId: roomId, before: current.first.id);
 
-    _hasMore = result.$2;
-    final older = result.$1;
+      _hasMore = result.$2;
+      final older = result.$1;
 
-    // Prepend the newly fetched older messages
-    state = AsyncValue.data([...older, ...current]);
+      // Prepend the newly fetched older messages
+      state = AsyncValue.data([...older, ...current]);
+    } finally {
+      _isLoadingOlder = false;
+    }
   }
 
   /// Send a message. Appends optimistically (pending), then replaces with server response.
@@ -76,9 +85,13 @@ class MessageController extends _$MessageController {
 
       // Replace optimistic with real message
       final updated = state.valueOrNull ?? [];
-      state = AsyncValue.data(
-        updated.map((m) => m.id == optimistic.id ? sent : m).toList(),
-      );
+      final swapped = updated
+          .map((m) => m.id == optimistic.id ? sent : m)
+          .toList();
+
+      // Deduplicate: a WS echo may have arrived before the REST response
+      final seen = <String>{};
+      state = AsyncValue.data(swapped.where((m) => seen.add(m.id)).toList());
 
       // Update chat list preview with sender's own message
       ref

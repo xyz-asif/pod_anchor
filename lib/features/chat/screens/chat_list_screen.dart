@@ -211,11 +211,27 @@ class ChatListScreen extends ConsumerWidget {
                         ),
                     ],
                   ),
-                  onTap: () {
+                  onTap: () async {
+                    // Clear unread count optimistically when entering
                     ref
                         .read(chatListControllerProvider.notifier)
                         .clearUnreadCount(room.id);
-                    context.push('/chat/${room.id}');
+
+                    // Wait for user to return from the chat screen
+                    await context.push('/chat/${room.id}');
+
+                    // When back on this screen, ensure unread count is zeroed out
+                    // (in case messages arrived while they were reading)
+                    if (context.mounted) {
+                      ref
+                          .read(chatListControllerProvider.notifier)
+                          .clearUnreadCount(room.id);
+
+                      // Also refresh the list to grab the absolute latest state
+                      ref
+                          .read(chatListControllerProvider.notifier)
+                          .backgroundRefresh();
+                    }
                   },
                 );
               },

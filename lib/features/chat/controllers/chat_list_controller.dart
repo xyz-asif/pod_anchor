@@ -39,6 +39,17 @@ class ChatListController extends _$ChatListController {
     });
   }
 
+  /// Silently refresh rooms in the background (no loading spinner).
+  /// Used when returning from a chat screen to sync state smoothly.
+  Future<void> backgroundRefresh() async {
+    try {
+      final rooms = await ref.read(chatRepoProvider).getRooms();
+      state = AsyncValue.data(_sortByLastUpdated(rooms));
+    } catch (e) {
+      // Ignore background refresh errors — let existing state persist
+    }
+  }
+
   /// Move a room to the top when a new message arrives (via WebSocket).
   void moveRoomToTop(String roomId, {String? lastMessage, String? senderName}) {
     final rooms = state.valueOrNull;

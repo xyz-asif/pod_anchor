@@ -7,7 +7,7 @@ part of 'pending_requests_controller.dart';
 // **************************************************************************
 
 String _$pendingRequestsControllerHash() =>
-    r'ca6f24afdcc0f546212fc52fb2df36f7401601a2';
+    r'b6d2aff4a594f5e48552e300641991e77c9b0254';
 
 /// Manages pending friend requests received by the current user.
 ///

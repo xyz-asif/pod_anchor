@@ -19,7 +19,7 @@ class FriendsController extends _$FriendsController {
     return _enrichConnections(connections);
   }
 
-  /// Enrich connections with user info from chat rooms.
+  /// Enrich connections with user info from connection data or chat rooms.
   List<FriendWithInfo> _enrichConnections(List<ConnectionModel> connections) {
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
     // VERY IMPORTANT: Use ref.watch here so that when chat rooms finish loading
@@ -31,21 +31,36 @@ class FriendsController extends _$FriendsController {
           ? connection.receiverId
           : connection.senderId;
 
-      // Try to find this friend in chat room participants
+      // First try to get info from connection data (backend now provides this)
       String displayName = friendUserId;
       String? photoURL;
       String? lastMessage;
       bool isOnline = false;
 
+      // Get friend info from connection data
+      if (connection.senderId == friendUserId) {
+        displayName = connection.senderDisplayName ?? connection.senderEmail ?? friendUserId;
+        photoURL = connection.senderPhotoURL;
+      } else {
+        displayName = connection.receiverDisplayName ?? connection.receiverEmail ?? friendUserId;
+        photoURL = connection.receiverPhotoURL;
+      }
+
+      // Then try to enhance with chat room data (for online status and last message)
       for (final room in rooms) {
         final participant = room.participants
             .where((p) => p.id == friendUserId)
             .firstOrNull;
 
         if (participant != null) {
-          displayName =
-              participant.displayName ?? participant.email ?? friendUserId;
-          photoURL = participant.photoURL;
+          // Only override if connection data didn't provide display name
+          if (displayName == friendUserId) {
+            displayName = participant.displayName ?? participant.email ?? friendUserId;
+          }
+          // Only override if connection data didn't provide photo
+          if (photoURL == null) {
+            photoURL = participant.photoURL;
+          }
           isOnline = participant.isOnline;
           lastMessage = room.lastMessage;
           break;

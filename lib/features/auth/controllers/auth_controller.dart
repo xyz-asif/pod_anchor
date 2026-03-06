@@ -3,6 +3,7 @@ import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:chatbee/features/auth/repos/auth_repo.dart';
 import 'package:chatbee/core/services/websocket_service.dart';
 import 'package:chatbee/core/providers/auth_provider.dart';
+import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 
 part 'auth_controller.g.dart';
 
@@ -26,6 +27,9 @@ class AuthController extends _$AuthController {
       if (token != null) {
         ref.read(webSocketServiceProvider).connect(token);
       }
+
+      // Start WS event handler so incoming events are processed immediately
+      ref.read(wsEventHandlerProvider);
 
       // Update auth state so the router redirects to /home
       ref.read(authNotifierProvider).login();

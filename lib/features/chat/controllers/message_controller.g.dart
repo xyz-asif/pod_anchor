@@ -6,7 +6,7 @@ part of 'message_controller.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$messageControllerHash() => r'b6d29e6b71c62d01ed9fc40f34549652c2edff59';
+String _$messageControllerHash() => r'6c10b2ec517eead1b5fccc45642e15e61dca1574';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -30,7 +30,7 @@ class _SystemHash {
 }
 
 abstract class _$MessageController
-    extends BuildlessAutoDisposeAsyncNotifier<List<MessageResponse>> {
+    extends BuildlessAsyncNotifier<List<MessageResponse>> {
   late final String roomId;
 
   FutureOr<List<MessageResponse>> build(String roomId);
@@ -116,10 +116,7 @@ class MessageControllerFamily
 /// Copied from [MessageController].
 class MessageControllerProvider
     extends
-        AutoDisposeAsyncNotifierProviderImpl<
-          MessageController,
-          List<MessageResponse>
-        > {
+        AsyncNotifierProviderImpl<MessageController, List<MessageResponse>> {
   /// Manages messages for a specific chat room.
   ///
   /// Takes roomId as a family parameter. Supports:
@@ -179,10 +176,7 @@ class MessageControllerProvider
   }
 
   @override
-  AutoDisposeAsyncNotifierProviderElement<
-    MessageController,
-    List<MessageResponse>
-  >
+  AsyncNotifierProviderElement<MessageController, List<MessageResponse>>
   createElement() {
     return _MessageControllerProviderElement(this);
   }
@@ -203,18 +197,14 @@ class MessageControllerProvider
 
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
-mixin MessageControllerRef
-    on AutoDisposeAsyncNotifierProviderRef<List<MessageResponse>> {
+mixin MessageControllerRef on AsyncNotifierProviderRef<List<MessageResponse>> {
   /// The parameter `roomId` of this provider.
   String get roomId;
 }
 
 class _MessageControllerProviderElement
     extends
-        AutoDisposeAsyncNotifierProviderElement<
-          MessageController,
-          List<MessageResponse>
-        >
+        AsyncNotifierProviderElement<MessageController, List<MessageResponse>>
     with MessageControllerRef {
   _MessageControllerProviderElement(super.provider);
 
