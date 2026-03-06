@@ -7,6 +7,7 @@ import 'package:chatbee/features/chat/controllers/message_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 
@@ -262,21 +263,82 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .map((e) => e.key)
         .toList();
 
+    // Get room details to find the other user's info
+    final chatListState = ref.watch(chatListControllerProvider);
+    final currentRoom = chatListState.valueOrNull?.firstWhere(
+      (r) => r.id == widget.roomId,
+      // fallback if not found
+      orElse: () => throw StateError('Room not found'),
+    );
+
+    // Find the other participant
+    final otherParticipant = currentRoom?.participants.firstWhere(
+      (p) => p.id != currentUserId,
+      // fallback
+      orElse: () => throw StateError('Participant not found'),
+    );
+
+    final displayName = otherParticipant?.displayName ?? 'Chat';
+    final photoURL = otherParticipant?.photoURL;
+    final isOnline = otherParticipant?.isOnline ?? false;
+    final isTyping = typingUsers.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        titleSpacing: 0,
+        title: Row(
           children: [
-            Text('Chat', style: TextStyle(fontSize: 16.sp)),
-            if (typingUsers.isNotEmpty)
-              Text(
-                'typing...',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: AppTheme.primaryColor,
-                  fontWeight: FontWeight.normal,
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 20.r,
+                  backgroundColor: AppTheme.borderColor,
+                  backgroundImage: photoURL != null
+                      ? NetworkImage(photoURL)
+                      : null,
+                  child: photoURL == null
+                      ? Icon(Icons.person, color: Colors.white, size: 20.r)
+                      : null,
                 ),
-              ),
+                if (isOnline)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 12.r,
+                      height: 12.r,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(width: 12.w),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  isTyping ? 'typing...' : (isOnline ? 'Online' : 'Offline'),
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: isTyping
+                        ? AppTheme.primaryColor
+                        : AppTheme.textMediumColor,
+                    fontWeight: isTyping ? FontWeight.w500 : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -504,7 +566,7 @@ class _DateSeparator extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
           decoration: BoxDecoration(
-            color: AppTheme.borderColor.withOpacity(0.5),
+            color: AppTheme.borderColor.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(12.r),
           ),
           child: Text(
@@ -570,8 +632,8 @@ class _MessageBubble extends StatelessWidget {
                   padding: EdgeInsets.all(8.r),
                   decoration: BoxDecoration(
                     color: isMe
-                        ? Colors.white.withOpacity(0.15)
-                        : AppTheme.borderColor.withOpacity(0.4),
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : AppTheme.borderColor.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(8.r),
                   ),
                   child: Text(
@@ -647,8 +709,8 @@ class _MessageBubble extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: isMe
-                              ? Colors.white.withOpacity(0.2)
-                              : AppTheme.borderColor.withOpacity(0.5),
+                              ? Colors.white.withValues(alpha: 0.2)
+                              : AppTheme.borderColor.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(10.r),
                         ),
                         child: Text(
