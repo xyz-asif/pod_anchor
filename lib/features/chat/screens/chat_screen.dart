@@ -66,16 +66,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
-    ref
-        .read(recordingControllerProvider(widget.roomId).notifier)
-        .cancel(); // ensures recording is stopped if leaving screen
+    // Cancel recording - wrap in try-catch since ref may be disposed
+    try {
+      ref
+          .read(recordingControllerProvider(widget.roomId).notifier)
+          .cancel();
+    } catch (_) {}
+    
+    // Stop typing - wrap in try-catch since ref may be disposed
+    if (_isTyping) {
+      try {
+        ref.read(typingControllerProvider(widget.roomId).notifier).stopTyping();
+      } catch (_) {}
+    }
+    
     _messageController.dispose();
     _scrollController.dispose();
     _typingDebounce?.cancel();
-    // Stop typing if still typing
-    if (_isTyping) {
-      ref.read(typingControllerProvider(widget.roomId).notifier).stopTyping();
-    }
     super.dispose();
   }
 
@@ -393,7 +400,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         data: (messages) {
           final prevList = prev?.valueOrNull ?? [];
-          if (messages.length > prevList.length && messages.isNotEmpty) {
+          // Only count as new messages if:
+          // 1. Message count increased AND
+          // 2. Previous list wasn't empty (i.e., not initial load)
+          if (prevList.isNotEmpty &&
+              messages.length > prevList.length &&
+              messages.isNotEmpty) {
             final lastMsg =
                 messages.last; // state is chronological, last is newest
             // If the newest incoming message is from someone else and unread, mark it read
@@ -1423,6 +1435,8 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
                           onLongPress: () {},
                           otherParticipantName: null,
                           otherParticipantPhotoUrl: null,
+                          currentUserName: null,
+                          currentUserPhotoUrl: null,
                         ),
                       ),
 

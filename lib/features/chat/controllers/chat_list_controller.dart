@@ -13,8 +13,13 @@ part 'chat_list_controller.g.dart';
 /// - Sorted by lastUpdated (newest first)
 @Riverpod(keepAlive: true)
 class ChatListController extends _$ChatListController {
+  bool _isDisposed = false;
+
   @override
   FutureOr<List<RoomResponse>> build() async {
+    // Track disposal
+    ref.onDispose(() => _isDisposed = true);
+    
     final rooms = await ref.read(chatRepoProvider).getRooms();
     return _sortByLastUpdated(rooms);
   }
@@ -32,7 +37,9 @@ class ChatListController extends _$ChatListController {
 
   /// Refresh rooms from server.
   Future<void> refresh() async {
+    if (_isDisposed) return;
     state = const AsyncValue.loading();
+    if (_isDisposed) return;
     state = await AsyncValue.guard(() async {
       final rooms = await ref.read(chatRepoProvider).getRooms();
       return _sortByLastUpdated(rooms);
@@ -44,7 +51,10 @@ class ChatListController extends _$ChatListController {
   Future<void> backgroundRefresh() async {
     try {
       final rooms = await ref.read(chatRepoProvider).getRooms();
-      state = AsyncValue.data(_sortByLastUpdated(rooms));
+      // Only update state if provider hasn't been disposed
+      if (!_isDisposed) {
+        state = AsyncValue.data(_sortByLastUpdated(rooms));
+      }
     } catch (e) {
       // Ignore background refresh errors — let existing state persist
     }

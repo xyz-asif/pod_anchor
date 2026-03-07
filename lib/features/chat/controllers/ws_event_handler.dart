@@ -104,10 +104,19 @@ void _handleStatusChanged(Ref ref, WsEvent event) {
   if (messageId == null || status == null) return;
 
   try {
-    ref
-        .read(messageControllerProvider(event.roomId).notifier)
-        .updateMessageStatus(messageId, status);
-  } catch (_) {}
+    // Check if the provider exists before reading it
+    final providerExists = ref.exists(messageControllerProvider(event.roomId));
+    if (providerExists) {
+      ref
+          .read(messageControllerProvider(event.roomId).notifier)
+          .updateMessageStatus(messageId, status);
+      log('Status updated for message $messageId: $status', name: 'WS');
+    } else {
+      log('Message controller not found for room ${event.roomId}, status update queued', name: 'WS');
+    }
+  } catch (e) {
+    log('Error handling status changed: $e', name: 'WS');
+  }
 }
 
 void _handleRoomRead(Ref ref, WsEvent event) {
@@ -115,10 +124,19 @@ void _handleRoomRead(Ref ref, WsEvent event) {
   if (readBy == null) return;
 
   try {
-    ref
-        .read(messageControllerProvider(event.roomId).notifier)
-        .markAllAsRead(readBy);
-  } catch (_) {}
+    // Check if the provider exists before reading it
+    final providerExists = ref.exists(messageControllerProvider(event.roomId));
+    if (providerExists) {
+      ref
+          .read(messageControllerProvider(event.roomId).notifier)
+          .markAllAsRead(readBy);
+      log('Marked all messages as read by $readBy in room ${event.roomId}', name: 'WS');
+    } else {
+      log('Message controller not found for room ${event.roomId}, room read queued', name: 'WS');
+    }
+  } catch (e) {
+    log('Error handling room read: $e', name: 'WS');
+  }
 }
 
 void _handleMessageEdited(Ref ref, WsEvent event) {

@@ -292,9 +292,60 @@ class _ImageBubbleState extends State<_ImageBubble> {
                 ),
               ),
             ),
+          // Timestamp and status overlay at bottom right
+          Positioned(
+            right: 8.w,
+            bottom: 8.h,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(4.r),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.message.createdAt != null)
+                    Text(
+                      '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  if (widget.isMe) ...[
+                    SizedBox(width: 3.w),
+                    _buildReadStatus(),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _buildReadStatus() {
+    if (widget.message.status == 'read') {
+      return Icon(
+        Icons.done_all,
+        size: 12.r,
+        color: const Color(0xFF53BDEB),
+      );
+    } else if (widget.message.status == 'delivered') {
+      return Icon(
+        Icons.done_all,
+        size: 12.r,
+        color: Colors.white.withValues(alpha: 0.7),
+      );
+    } else {
+      return Icon(
+        Icons.check,
+        size: 12.r,
+        color: Colors.white.withValues(alpha: 0.7),
+      );
+    }
   }
 
   double _calculateHeight() {
@@ -439,29 +490,84 @@ class _GifBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4.r), // Reduced from 12.r for tighter WhatsApp-style
-      child: CachedNetworkImage(
-        imageUrl: message.content,
-        width: 220.w,
-        fit: BoxFit.contain,
-        placeholder: (context, url) => Container(
-          width: 220.w,
-          height: 150.h,
-          color: Colors.grey.withValues(alpha: 0.1),
-          child: const Center(child: CircularProgressIndicator()),
-        ),
-        errorWidget: (context, url, error) => Container(
-          width: 220.w,
-          height: 150.h,
-          color: Colors.grey.withValues(alpha: 0.1),
-          child: Icon(
-            Icons.broken_image_rounded,
-            color: AppTheme.textMediumColor,
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4.r),
+          child: CachedNetworkImage(
+            imageUrl: message.content,
+            width: 220.w,
+            fit: BoxFit.contain,
+            placeholder: (context, url) => Container(
+              width: 220.w,
+              height: 150.h,
+              color: Colors.grey.withValues(alpha: 0.1),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+            errorWidget: (context, url, error) => Container(
+              width: 220.w,
+              height: 150.h,
+              color: Colors.grey.withValues(alpha: 0.1),
+              child: Icon(
+                Icons.broken_image_rounded,
+                color: AppTheme.textMediumColor,
+              ),
+            ),
           ),
         ),
-      ),
+        // Timestamp and status overlay at bottom right
+        Positioned(
+          right: 8.w,
+          bottom: 8.h,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(4.r),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message.createdAt != null)
+                  Text(
+                    '${message.createdAt!.hour.toString().padLeft(2, '0')}:${message.createdAt!.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      fontSize: 10.sp,
+                      color: Colors.white70,
+                    ),
+                  ),
+                if (isMe) ...[
+                  SizedBox(width: 3.w),
+                  _buildReadStatus(),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  Widget _buildReadStatus() {
+    if (message.status == 'read') {
+      return Icon(
+        Icons.done_all,
+        size: 12.r,
+        color: const Color(0xFF53BDEB),
+      );
+    } else if (message.status == 'delivered') {
+      return Icon(
+        Icons.done_all,
+        size: 12.r,
+        color: Colors.white.withValues(alpha: 0.7),
+      );
+    } else {
+      return Icon(
+        Icons.check,
+        size: 12.r,
+        color: Colors.white.withValues(alpha: 0.7),
+      );
+    }
   }
 }
 
