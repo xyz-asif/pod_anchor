@@ -1,4 +1,6 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'package:chatbee/features/chat/models/media_metadata.dart';
+import 'package:chatbee/features/chat/models/message_type.dart';
 
 part 'reply_to.g.dart';
 
@@ -10,6 +12,8 @@ class ReplyTo {
   final String senderId;
   final String content;
   final String? status;
+  final String? type;
+  final MediaMetadata? metadata;
   final DateTime? createdAt;
 
   const ReplyTo({
@@ -17,6 +21,8 @@ class ReplyTo {
     required this.senderId,
     required this.content,
     this.status,
+    this.type,
+    this.metadata,
     this.createdAt,
   });
 
@@ -24,4 +30,10 @@ class ReplyTo {
       _$ReplyToFromJson(json);
 
   Map<String, dynamic> toJson() => _$ReplyToToJson(this);
+
+  /// Helper to get typed message type enum.
+  MessageType get messageType => MessageType.fromString(type);
+
+  /// Whether this reply is to a media message.
+  bool get isMedia => messageType != MessageType.text;
 }

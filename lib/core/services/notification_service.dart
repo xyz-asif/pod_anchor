@@ -102,7 +102,7 @@ class NotificationService {
     );
 
     await _localNotifications.initialize(
-      initializationSettings,
+      settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         log('Local notification tapped: ${response.payload}', name: 'FCM');
         // Handle local notification tap here
@@ -151,10 +151,10 @@ class NotificationService {
 
     if (notification != null && android != null) {
       _localNotifications.show(
-        notification.hashCode,
-        notification.title,
-        notification.body,
-        NotificationDetails(
+        id: notification.hashCode,
+        title: notification.title,
+        body: notification.body,
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'high_importance_channel', // Must match the channel created in _setupLocalNotifications
             'High Importance Notifications',

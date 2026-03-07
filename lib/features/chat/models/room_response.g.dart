@@ -17,6 +17,7 @@ RoomResponse _$RoomResponseFromJson(Map<String, dynamic> json) => RoomResponse(
       const [],
   lastMessage: json['lastMessage'] as String?,
   lastMessageSenderName: json['lastMessageSenderName'] as String?,
+  lastMessageType: json['lastMessageType'] as String?,
   unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
   lastUpdated: json['lastUpdated'] == null
       ? null
@@ -31,6 +32,7 @@ Map<String, dynamic> _$RoomResponseToJson(RoomResponse instance) =>
       'participants': instance.participants,
       'lastMessage': instance.lastMessage,
       'lastMessageSenderName': instance.lastMessageSenderName,
+      'lastMessageType': instance.lastMessageType,
       'unreadCount': instance.unreadCount,
       'lastUpdated': instance.lastUpdated?.toIso8601String(),
     };

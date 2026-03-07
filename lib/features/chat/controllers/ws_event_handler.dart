@@ -86,9 +86,13 @@ void _handleNewMessage(Ref ref, WsEvent event) {
     }
 
     // Update chat list: move room to top, increment unread
+    // Use media-aware preview instead of raw content/URL
+    final preview = message.isMedia
+        ? message.messageType.previewText(message.metadata?.fileName)
+        : message.content;
     ref
         .read(chatListControllerProvider.notifier)
-        .moveRoomToTop(event.roomId, lastMessage: message.content);
+        .moveRoomToTop(event.roomId, lastMessage: preview);
   } catch (e) {
     log('Error handling new message: $e', name: 'WS');
   }

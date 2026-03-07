@@ -1,15 +1,27 @@
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:chatbee/features/chat/controllers/message_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
-import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/chat/models/message_type.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
+import 'package:chatbee/features/chat/screens/widgets/attachment_picker.dart';
+import 'package:chatbee/features/chat/screens/widgets/gif_picker_sheet.dart';
+import 'package:chatbee/features/chat/screens/widgets/media_bubble.dart';
+import 'package:chatbee/features/chat/models/media_metadata.dart';
+import 'package:chatbee/core/services/media_picker_service.dart';
+import 'package:chatbee/core/services/giphy_service.dart';
+import 'package:chatbee/core/services/audio_recorder_service.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/chat/controllers/chat_state_controller.dart';
 
 /// Chat screen — message list with input bar.
 ///
@@ -31,10 +43,6 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
-  String? _replyToId;
-  String? _replyToContent;
-  String? _editingMessageId;
-  String? _editingContent;
   Timer? _typingDebounce;
   bool _isTyping = false;
 
@@ -54,6 +62,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    ref
+        .read(recordingControllerProvider(widget.roomId).notifier)
+        .cancel(); // ensures recording is stopped if leaving screen
     _messageController.dispose();
     _scrollController.dispose();
     _typingDebounce?.cancel();
@@ -86,58 +97,187 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  void _sendMessage() {
-    final content = _messageController.text.trim();
+  void _showAttachmentPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+      ),
+      builder: (context) {
+        return AttachmentPicker(
+          onPickImage: _handlePickImage,
+          onPickVideo: _handlePickVideo,
+          onPickFile: _handlePickFile,
+          onPickGif: _handlePickGif,
+        );
+      },
+    );
+  }
+
+  void _handlePickGif() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return GifPickerSheet(
+          onGifSelected: (gif) {
+            Navigator.pop(context); // close gif picker
+            _sendGifMessage(gif);
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _stopRecording() async {
+    ref.read(recordingControllerProvider(widget.roomId).notifier).stop();
+    final (path, duration) = await ref
+        .read(audioRecorderServiceProvider)
+        .stopRecording();
+
+    if (mounted) {
+      if (path != null && duration >= 1) {
+        final file = File(path);
+        final size = file.existsSync() ? file.lengthSync() : 0;
+        final inputState = ref.read(chatInputControllerProvider(widget.roomId));
+
+        ref
+            .read(messageControllerProvider(widget.roomId).notifier)
+            .sendMediaMessage(
+              filePath: path,
+              fileName: 'Voice message',
+              messageType: MessageType.audio,
+              mimeType: 'audio/m4a',
+              replyToId: inputState.replyToId,
+              fileSize: size,
+            );
+        _clearPreview();
+      }
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    ref.read(recordingControllerProvider(widget.roomId).notifier).cancel();
+  }
+
+  void _onAttachmentPressed() {
+    _showAttachmentPicker();
+  }
+
+  void _onSendMessageRequested(String content) {
     if (content.isEmpty) return;
 
-    if (_editingMessageId != null) {
+    final inputState = ref.read(chatInputControllerProvider(widget.roomId));
+
+    if (inputState.editingMessageId != null) {
       ref
           .read(messageControllerProvider(widget.roomId).notifier)
-          .editMessageRemote(_editingMessageId!, content);
+          .editMessageRemote(inputState.editingMessageId!, content);
     } else {
       ref
           .read(messageControllerProvider(widget.roomId).notifier)
-          .sendMessage(content, replyToId: _replyToId);
+          .sendMessage(content, replyToId: inputState.replyToId);
     }
-
     _messageController.clear();
     _clearPreview();
+  }
 
-    // Stop typing
-    if (_isTyping) {
-      _isTyping = false;
-      ref.read(typingControllerProvider(widget.roomId).notifier).stopTyping();
+  void _sendGifMessage(GiphyGif gif) {
+    try {
+      final metadata = MediaMetadata(
+        fileName: gif.title,
+        mimeType: 'image/gif',
+      );
+      final inputState = ref.read(chatInputControllerProvider(widget.roomId));
+
+      ref
+          .read(messageControllerProvider(widget.roomId).notifier)
+          .sendMessage(
+            gif.url,
+            replyToId: inputState.replyToId,
+            type: MessageType.gif,
+            metadata: metadata,
+          );
+      _clearPreview();
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Failed to send GIF: $e',
+          type: SnackbarType.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _handlePickImage(ImageSource source) async {
+    final pickerService = ref.read(mediaPickerServiceProvider);
+    final picked = await pickerService.pickImage(source: source);
+    if (picked == null) return;
+    _sendMediaMessage(picked, MessageType.image);
+  }
+
+  Future<void> _handlePickVideo(ImageSource source) async {
+    final pickerService = ref.read(mediaPickerServiceProvider);
+    final picked = await pickerService.pickVideo(source: source);
+    if (picked == null) return;
+    _sendMediaMessage(picked, MessageType.video);
+  }
+
+  Future<void> _handlePickFile() async {
+    final pickerService = ref.read(mediaPickerServiceProvider);
+    final picked = await pickerService.pickFile();
+    if (picked == null) return;
+    _sendMediaMessage(picked, MessageType.file);
+  }
+
+  void _sendMediaMessage(PickedMedia picked, MessageType type) {
+    try {
+      final inputState = ref.read(chatInputControllerProvider(widget.roomId));
+      ref
+          .read(messageControllerProvider(widget.roomId).notifier)
+          .sendMediaMessage(
+            filePath: picked.filePath,
+            fileName: picked.fileName,
+            messageType: type,
+            mimeType: picked.mimeType,
+            fileSize: picked.fileSize,
+            replyToId: inputState.replyToId,
+          );
+      _clearPreview();
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Failed to send media: $e',
+          type: SnackbarType.error,
+        );
+      }
     }
   }
 
   void _clearPreview() {
-    setState(() {
-      _replyToId = null;
-      _replyToContent = null;
-      _editingMessageId = null;
-      _editingContent = null;
-      _messageController.clear();
-    });
+    ref.read(chatInputControllerProvider(widget.roomId).notifier).clear();
+    _messageController.clear();
   }
 
-  void _setReply(String messageId, String content) {
-    setState(() {
-      _replyToId = messageId;
-      _replyToContent = content;
-      _editingMessageId = null;
-      _editingContent = null;
-      _messageController.clear();
-    });
+  void _setReply(MessageResponse message) {
+    final content = message.isMedia
+        ? message.messageType.previewText(message.metadata?.fileName)
+        : message.content;
+    ref
+        .read(chatInputControllerProvider(widget.roomId).notifier)
+        .setReply(message.id, content);
+    _messageController.clear();
   }
 
   void _setEdit(String messageId, String content) {
-    setState(() {
-      _editingMessageId = messageId;
-      _editingContent = content;
-      _replyToId = null;
-      _replyToContent = null;
-      _messageController.text = content;
-    });
+    ref
+        .read(chatInputControllerProvider(widget.roomId).notifier)
+        .setEdit(messageId, content);
+    _messageController.text = content;
   }
 
   void _showActionMenu(MessageResponse message, bool isMe) {
@@ -179,10 +319,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 title: const Text('Reply'),
                 onTap: () {
                   Navigator.pop(context);
-                  _setReply(message.id, message.content);
+                  _setReply(message);
                 },
               ),
-              if (isMe) ...[
+              if (isMe && !message.isMedia) ...[
                 ListTile(
                   leading: const Icon(Icons.edit_rounded),
                   title: const Text('Edit'),
@@ -191,6 +331,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     _setEdit(message.id, message.content);
                   },
                 ),
+              ],
+              if (isMe)
                 ListTile(
                   leading: const Icon(Icons.delete_rounded, color: Colors.red),
                   title: const Text(
@@ -204,7 +346,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         .deleteMessageRemote(message.id);
                   },
                 ),
-              ],
             ],
           ),
         );
@@ -383,8 +524,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     final message = reversedMessages[index];
                     final isMe = message.senderId == currentUserId;
 
-                    // Since it's reversed, the "previous" message in chronological order
-                    // is actually at index + 1
                     final isLastInGroup = index == reversedMessages.length - 1;
                     final showDate =
                         isLastInGroup ||
@@ -411,56 +550,67 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
 
           // Action preview (reply/edit)
-          if (_replyToContent != null || _editingContent != null)
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              color: AppTheme.featureBackgroundColor,
-              child: Row(
-                children: [
-                  Container(
-                    width: 3.w,
-                    height: 32.h,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.circular(2.r),
+          Consumer(
+            builder: (context, ref, child) {
+              final inputState = ref.watch(
+                chatInputControllerProvider(widget.roomId),
+              );
+              if (inputState.replyToContent == null &&
+                  inputState.editingContent == null) {
+                return const SizedBox.shrink();
+              }
+              return Container(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                color: AppTheme.featureBackgroundColor,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3.w,
+                      height: 32.h,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        borderRadius: BorderRadius.circular(2.r),
+                      ),
                     ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _editingContent != null
-                              ? 'Editing message'
-                              : 'Replying to message',
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            color: AppTheme.primaryColor,
-                            fontWeight: FontWeight.bold,
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            inputState.editingContent != null
+                                ? 'Editing message'
+                                : 'Replying to message',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          _editingContent ?? _replyToContent!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13.sp,
-                            color: AppTheme.textMediumColor,
+                          SizedBox(height: 2.h),
+                          Text(
+                            inputState.editingContent ??
+                                inputState.replyToContent!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              color: AppTheme.textMediumColor,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close_rounded, size: 18.r),
-                    onPressed: _clearPreview,
-                  ),
-                ],
-              ),
-            ),
+                    IconButton(
+                      icon: Icon(Icons.close_rounded, size: 18.r),
+                      onPressed: _clearPreview,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
 
           // Input bar
           Container(
@@ -476,50 +626,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 top: BorderSide(color: AppTheme.borderColor, width: 0.5),
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
+            child: Consumer(
+              builder: (context, ref, child) {
+                final isRecording = ref.watch(
+                  recordingControllerProvider(
+                    widget.roomId,
+                  ).select((s) => s.isRecording),
+                );
+                if (isRecording) {
+                  return _RecordingBar(
+                    roomId: widget.roomId,
+                    onStop: _stopRecording,
+                    onCancel: _cancelRecording,
+                  );
+                } else {
+                  return _ChatInputBar(
+                    roomId: widget.roomId,
                     controller: _messageController,
+                    onSend: _onSendMessageRequested,
+                    onAttachment: _onAttachmentPressed,
                     onChanged: _onTextChanged,
-                    maxLines: 4,
-                    minLines: 1,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      hintStyle: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppTheme.textLightColor,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24.r),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: AppTheme.featureBackgroundColor,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 10.h,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 4.w),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: Icon(
-                      Icons.send_rounded,
-                      size: 20.r,
-                      color: Colors.white,
-                    ),
-                    onPressed: _sendMessage,
-                  ),
-                ),
-              ],
+                  );
+                }
+              },
             ),
           ),
         ],
@@ -530,6 +659,153 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isDifferentDay(DateTime? a, DateTime? b) {
     if (a == null || b == null) return true;
     return a.day != b.day || a.month != b.month || a.year != b.year;
+  }
+}
+
+class _ChatInputBar extends ConsumerWidget {
+  final String roomId;
+  final TextEditingController controller;
+  final Function(String) onSend;
+  final VoidCallback onAttachment;
+  final Function(String) onChanged;
+
+  const _ChatInputBar({
+    required this.roomId,
+    required this.controller,
+    required this.onSend,
+    required this.onAttachment,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final hasText = value.text.trim().isNotEmpty;
+        return Row(
+          children: [
+            // Attachment button
+            IconButton(
+              icon: Icon(
+                Icons.attach_file_rounded,
+                size: 22.r,
+                color: AppTheme.textMediumColor,
+              ),
+              onPressed: onAttachment,
+            ),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                maxLines: 4,
+                minLines: 1,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'Type a message...',
+                  hintStyle: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppTheme.textLightColor,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24.r),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: AppTheme.featureBackgroundColor,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 10.h,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 4.w),
+            Container(
+              decoration: BoxDecoration(
+                color: hasText ? AppTheme.primaryColor : Colors.grey.shade200,
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                icon: Icon(
+                  hasText ? Icons.send_rounded : Icons.mic_rounded,
+                  size: 20.r,
+                  color: hasText ? Colors.white : AppTheme.textDarkColor,
+                ),
+                onPressed: hasText
+                    ? () => onSend(controller.text.trim())
+                    : () => ref
+                          .read(recordingControllerProvider(roomId).notifier)
+                          .start(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _RecordingBar extends ConsumerWidget {
+  final String roomId;
+  final VoidCallback onStop;
+  final VoidCallback onCancel;
+
+  const _RecordingBar({
+    required this.roomId,
+    required this.onStop,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(recordingControllerProvider(roomId));
+    final minutes = (state.durationSeconds / 60).floor().toString().padLeft(
+      2,
+      '0',
+    );
+    final seconds = (state.durationSeconds % 60).floor().toString().padLeft(
+      2,
+      '0',
+    );
+
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+          onPressed: onCancel,
+        ),
+        Expanded(
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mic, color: Colors.red, size: 16.sp),
+                SizedBox(width: 8.w),
+                Text(
+                  '$minutes:$seconds',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.textDarkColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor,
+            shape: BoxShape.circle,
+          ),
+          child: IconButton(
+            icon: Icon(Icons.send_rounded, size: 20.r, color: Colors.white),
+            onPressed: onStop,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -637,7 +913,11 @@ class _MessageBubble extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8.r),
                   ),
                   child: Text(
-                    message.replyTo!.content,
+                    message.replyTo!.isMedia
+                        ? message.replyTo!.messageType.previewText(
+                            message.replyTo!.metadata?.fileName,
+                          )
+                        : message.replyTo!.content,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -649,18 +929,21 @@ class _MessageBubble extends StatelessWidget {
                 ),
 
               // Message content
-              Text(
-                message.content,
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: isDeleted
-                      ? AppTheme.textMediumColor
-                      : isMe
-                      ? Colors.white
-                      : AppTheme.textDarkColor,
-                  fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
+              if (message.isMedia)
+                MediaBubble(message: message, isMe: isMe)
+              else
+                Text(
+                  message.content,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: isDeleted
+                        ? AppTheme.textMediumColor
+                        : isMe
+                        ? Colors.white
+                        : AppTheme.textDarkColor,
+                    fontStyle: isDeleted ? FontStyle.italic : FontStyle.normal,
+                  ),
                 ),
-              ),
 
               SizedBox(height: 2.h),
 
