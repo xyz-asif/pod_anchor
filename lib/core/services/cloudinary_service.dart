@@ -84,6 +84,26 @@ class CloudinaryService {
       throw Exception('Upload failed: $errorMsg');
     }
   }
+
+  /// Generate a Cloudinary thumbnail URL for document preview (PDF, DOCX, etc.)
+  /// Returns null if the URL is not a Cloudinary URL or not a supported format.
+  static String? generateDocumentThumbnail(String uploadUrl, {int width = 400, int height = 400}) {
+    if (!uploadUrl.contains('cloudinary.com/')) return null;
+
+    // Supported formats for Cloudinary document thumbnail generation
+    final supportedExtensions = ['pdf', 'docx', 'pptx', 'xlsx', 'ai', 'eps', 'psd', 'tiff', 'tif'];
+    final extension = uploadUrl.split('.').last.toLowerCase().split('?').first;
+    if (!supportedExtensions.contains(extension)) return null;
+
+    // Replace raw/upload with image/upload (Cloudinary serves thumbnails from image endpoint)
+    var url = uploadUrl.replaceFirst('/raw/upload/', '/image/upload/');
+
+    // Insert transformation after /upload/
+    final transformation = 'pg_1,w_$width,h_$height,c_fit,f_jpg';
+    url = url.replaceFirst('/upload/', '/upload/$transformation/');
+
+    return url;
+  }
 }
 
 /// Riverpod provider for CloudinaryService (singleton).

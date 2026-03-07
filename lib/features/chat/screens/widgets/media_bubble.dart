@@ -49,48 +49,141 @@ class MediaBubble extends StatelessWidget {
   }
 }
 
-class _ImageBubble extends StatelessWidget {
+class _ImageBubble extends StatefulWidget {
   final MessageResponse message;
   final bool isMe;
 
   const _ImageBubble({required this.message, required this.isMe});
 
   @override
+  State<_ImageBubble> createState() => _ImageBubbleState();
+}
+
+class _ImageBubbleState extends State<_ImageBubble> {
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  bool _isDownloaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIfDownloaded();
+  }
+
+  Future<void> _checkIfDownloaded() async {
+    final dir = await getTemporaryDirectory();
+    final fileName = widget.message.metadata?.fileName ?? 'image_${widget.message.id}.jpg';
+    final savePath = '${dir.path}/${widget.message.id}_$fileName';
+    final file = File(savePath);
+    if (await file.exists()) {
+      setState(() => _isDownloaded = true);
+    }
+  }
+
+  Future<void> _handleDownload() async {
+    if (_isDownloaded) return;
+
+    final isUploading = widget.message.status == 'uploading';
+    final imageUrl = widget.message.content;
+
+    if (isUploading || !imageUrl.startsWith('http')) return;
+
+    try {
+      setState(() {
+        _isDownloading = true;
+        _downloadProgress = 0.0;
+      });
+
+      final dir = await getTemporaryDirectory();
+      final fileName = widget.message.metadata?.fileName ?? 'image_${widget.message.id}.jpg';
+      final savePath = '${dir.path}/${widget.message.id}_$fileName';
+      final file = File(savePath);
+
+      if (!await file.exists()) {
+        // For Cloudinary URLs, add download=true parameter and proper headers
+        var downloadUrl = imageUrl;
+        if (downloadUrl.contains('cloudinary.com')) {
+          // Add download flag for Cloudinary
+          downloadUrl = '$downloadUrl?download=true';
+        }
+
+        await _dio.download(
+          downloadUrl,
+          savePath,
+          options: Options(
+            headers: {
+              'Accept': '*/*',
+            },
+            followRedirects: true,
+            validateStatus: (status) => status != null && status < 500,
+          ),
+          onReceiveProgress: (received, total) {
+            if (total > 0 && mounted) {
+              setState(() {
+                _downloadProgress = received / total;
+              });
+            }
+          },
+        );
+      }
+
+      setState(() {
+        _isDownloaded = true;
+        _isDownloading = false;
+      });
+    } catch (e) {
+      debugPrint('Error downloading image: $e');
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = 0.0;
+        });
+      }
+    }
+  }
+
+  void _handleTap() {
+    final isUploading = widget.message.status == 'uploading';
+    if (isUploading) return;
+
+    final isLocal = isUploading && !widget.message.content.startsWith('http');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullScreenImageViewer(
+          urlOrPath: widget.message.content,
+          isLocal: isLocal,
+          heroTag: 'image_${widget.message.id}',
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isUploading = message.status == 'uploading';
-    // When uploading, message.content holds the local file path
-    final isLocal = isUploading && !message.content.startsWith('http');
+    final isUploading = widget.message.status == 'uploading';
+    final isLocal = isUploading && !widget.message.content.startsWith('http');
+    final showDownload = !isUploading && !isLocal && !_isDownloaded;
 
     return GestureDetector(
-      onTap: () {
-        if (isUploading) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => FullScreenImageViewer(
-              urlOrPath: message.content,
-              isLocal: isLocal,
-              heroTag: 'image_${message.id}',
-            ),
-          ),
-        );
-      },
+      onTap: _handleTap,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Hero(
-            tag: 'image_${message.id}',
+            tag: 'image_${widget.message.id}',
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(4.r), // Reduced from 8.r for tighter WhatsApp-style
+              borderRadius: BorderRadius.circular(4.r),
               child: isLocal
                   ? Image.file(
-                      File(message.content),
+                      File(widget.message.content),
                       width: 220.w,
                       height: _calculateHeight(),
                       fit: BoxFit.cover,
                     )
                   : CachedNetworkImage(
-                      imageUrl: message.content,
+                      imageUrl: widget.message.content,
                       width: 220.w,
                       height: _calculateHeight(),
                       fit: BoxFit.cover,
@@ -100,7 +193,7 @@ class _ImageBubble extends StatelessWidget {
                         color: Colors.grey.withValues(alpha: 0.2),
                         child: Center(
                           child: CircularProgressIndicator(
-                            color: isMe ? Colors.white : AppTheme.primaryColor,
+                            color: widget.isMe ? Colors.white : AppTheme.primaryColor,
                           ),
                         ),
                       ),
@@ -123,10 +216,66 @@ class _ImageBubble extends StatelessWidget {
               height: _calculateHeight(),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(8.r),
+                borderRadius: BorderRadius.circular(4.r),
               ),
               child: const Center(
                 child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+          // Download button overlay
+          if (showDownload && !_isDownloading)
+            Positioned(
+              right: 8.w,
+              bottom: 8.h,
+              child: GestureDetector(
+                onTap: _handleDownload,
+                child: Container(
+                  padding: EdgeInsets.all(8.r),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.download_rounded,
+                    color: Colors.white,
+                    size: 24.sp,
+                  ),
+                ),
+              ),
+            ),
+          // Download progress ring
+          if (_isDownloading)
+            Positioned(
+              right: 8.w,
+              bottom: 8.h,
+              child: Container(
+                padding: EdgeInsets.all(8.r),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: SizedBox(
+                  width: 24.r,
+                  height: 24.r,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CircularProgressIndicator(
+                        value: _downloadProgress > 0 ? _downloadProgress : null,
+                        strokeWidth: 2.5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.3),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                      Center(
+                        child: Icon(
+                          Icons.download_rounded,
+                          color: Colors.white,
+                          size: 12.sp,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
         ],
@@ -135,13 +284,11 @@ class _ImageBubble extends StatelessWidget {
   }
 
   double _calculateHeight() {
-    final meta = message.metadata;
+    final meta = widget.message.metadata;
     if (meta?.width != null && meta?.height != null && meta!.width! > 0) {
       final ratio = meta.height! / meta.width!;
       return (220.w * ratio).clamp(100.h, 400.h);
     }
-    // If we don't know the size, return null to let the widget decide (contain/cover)
-    // or return a reasonable default that isn't always square.
     return 220.w;
   }
 }
@@ -316,8 +463,31 @@ class _FileBubble extends StatefulWidget {
 
 class _FileBubbleState extends State<_FileBubble> {
   bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  bool _isDownloaded = false;
 
-  Future<void> _handleTap() async {
+  @override
+  void initState() {
+    super.initState();
+    _checkIfDownloaded();
+  }
+
+  Future<void> _checkIfDownloaded() async {
+    final dir = await getTemporaryDirectory();
+    final fileName = widget.message.metadata?.fileName ?? 'downloaded_file';
+    final savePath = '${dir.path}/${widget.message.id}_$fileName';
+    final file = File(savePath);
+    if (await file.exists()) {
+      setState(() => _isDownloaded = true);
+    }
+  }
+
+  Future<void> _handleDownload() async {
+    if (_isDownloaded) {
+      await _openFile();
+      return;
+    }
+
     final isUploading = widget.message.status == 'uploading';
     final pathOrUrl = widget.message.content;
 
@@ -331,6 +501,7 @@ class _FileBubbleState extends State<_FileBubble> {
     try {
       setState(() {
         _isDownloading = true;
+        _downloadProgress = 0.0;
       });
 
       final dir = await getTemporaryDirectory();
@@ -339,25 +510,62 @@ class _FileBubbleState extends State<_FileBubble> {
       final file = File(savePath);
 
       if (!await file.exists()) {
-        await _dio.download(pathOrUrl, savePath);
+        // For Cloudinary URLs, add download=true parameter and proper headers
+        var downloadUrl = pathOrUrl;
+        if (downloadUrl.contains('cloudinary.com')) {
+          // Add download flag for Cloudinary
+          downloadUrl = '$downloadUrl?download=true';
+        }
+
+        await _dio.download(
+          downloadUrl,
+          savePath,
+          options: Options(
+            headers: {
+              'Accept': '*/*',
+            },
+            followRedirects: true,
+            validateStatus: (status) => status != null && status < 500,
+          ),
+          onReceiveProgress: (received, total) {
+            if (total > 0 && mounted) {
+              setState(() {
+                _downloadProgress = received / total;
+              });
+            }
+          },
+        );
       }
+
+      setState(() {
+        _isDownloaded = true;
+        _isDownloading = false;
+      });
 
       await OpenFilex.open(savePath);
     } catch (e) {
-      debugPrint('Error downloading/opening file: $e');
-    } finally {
+      debugPrint('Error downloading file: $e');
       if (mounted) {
         setState(() {
           _isDownloading = false;
+          _downloadProgress = 0.0;
         });
       }
     }
+  }
+
+  Future<void> _openFile() async {
+    final dir = await getTemporaryDirectory();
+    final fileName = widget.message.metadata?.fileName ?? 'downloaded_file';
+    final savePath = '${dir.path}/${widget.message.id}_$fileName';
+    await OpenFilex.open(savePath);
   }
 
   @override
   Widget build(BuildContext context) {
     final fileName = widget.message.metadata?.fileName ?? 'Unknown file';
     final fileSize = widget.message.metadata?.fileSize ?? 0;
+    final thumbnailUrl = widget.message.metadata?.thumbnailURL;
 
     // Format file size
     String sizeStr;
@@ -370,84 +578,387 @@ class _FileBubbleState extends State<_FileBubble> {
     }
 
     final isUploading = widget.message.status == 'uploading';
+    final hasPreview = thumbnailUrl != null && !isUploading;
+    final ext = fileName.split('.').last.toUpperCase();
 
+    // WhatsApp-style file bubble
     return GestureDetector(
-      onTap: _isDownloading ? null : _handleTap,
+      onTap: _handleDownload,
       child: Container(
-        padding: EdgeInsets.all(12.r),
+        width: 240.w,
         decoration: BoxDecoration(
           color: widget.isMe
-              ? Colors.white.withValues(alpha: 0.15)
-              : AppTheme.borderColor.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(8.r),
+              ? AppTheme.primaryColor
+              : AppTheme.featureBackgroundColor,
+          borderRadius: BorderRadius.circular(16.r),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: hasPreview
+            ? _buildPreviewLayout(thumbnailUrl, fileName, sizeStr, ext, isUploading)
+            : _buildNoPreviewLayout(fileName, sizeStr, ext, isUploading),
+      ),
+    );
+  }
+
+  Widget _buildPreviewLayout(String thumbnailUrl, String fileName, String sizeStr, String ext, bool isUploading) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Thumbnail with dark overlay at bottom
+        Stack(
           children: [
-            Container(
-              padding: EdgeInsets.all(10.r),
-              decoration: BoxDecoration(
-                color: widget.isMe
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: _isDownloading
-                  ? SizedBox(
-                      width: 24.sp,
-                      height: 24.sp,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: widget.isMe
-                            ? Colors.white
-                            : AppTheme.primaryColor,
-                      ),
-                    )
-                  : Icon(
-                      Icons.insert_drive_file_rounded,
+            ClipRRect(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+              child: CachedNetworkImage(
+                imageUrl: thumbnailUrl,
+                width: 240.w,
+                height: 180.h,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  width: 240.w,
+                  height: 180.h,
+                  color: Colors.grey.withValues(alpha: 0.2),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
                       color: widget.isMe ? Colors.white : AppTheme.primaryColor,
-                      size: 24.sp,
                     ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  width: 240.w,
+                  height: 180.h,
+                  color: Colors.grey.withValues(alpha: 0.2),
+                  child: Icon(
+                    Icons.broken_image,
+                    color: Colors.white54,
+                    size: 40.sp,
+                  ),
+                ),
+              ),
             ),
-            SizedBox(width: 12.w),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+            // Dark gradient overlay at bottom
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 80.h,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(4.r)),
+                ),
+              ),
+            ),
+            // Download button overlay (if not downloaded)
+            if (!_isDownloaded && !isUploading && !_isDownloading)
+              Positioned(
+                right: 8.w,
+                top: 8.h,
+                child: Container(
+                  padding: EdgeInsets.all(6.r),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.download_rounded,
+                    color: Colors.white,
+                    size: 20.sp,
+                  ),
+                ),
+              ),
+            // Download progress ring
+            if (_isDownloading)
+              Positioned(
+                right: 8.w,
+                top: 8.h,
+                child: SizedBox(
+                  width: 32.r,
+                  height: 32.r,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CircularProgressIndicator(
+                        value: _downloadProgress > 0 ? _downloadProgress : null,
+                        strokeWidth: 3,
+                        backgroundColor: Colors.white.withValues(alpha: 0.3),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                      Center(
+                        child: Icon(
+                          Icons.download_rounded,
+                          color: Colors.white,
+                          size: 16.sp,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        // File info section with dark background
+        Container(
+          padding: EdgeInsets.all(12.r),
+          decoration: BoxDecoration(
+            color: widget.isMe
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(16.r)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Filename
+              Text(
+                fileName,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: widget.isMe ? Colors.white : AppTheme.textDarkColor,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: 4.h),
+              // File details: pages • size • type
+              Row(
                 children: [
                   Text(
-                    fileName,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: widget.isMe
-                          ? Colors.white
-                          : AppTheme.textDarkColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    isUploading
-                        ? 'Uploading...'
-                        : _isDownloading
-                        ? 'Downloading...'
-                        : sizeStr,
+                    sizeStr,
                     style: TextStyle(
                       fontSize: 12.sp,
-                      color: widget.isMe
-                          ? Colors.white70
-                          : AppTheme.textMediumColor,
+                      color: widget.isMe ? Colors.white70 : AppTheme.textMediumColor,
+                    ),
+                  ),
+                  Text(
+                    ' • ',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: widget.isMe ? Colors.white70 : AppTheme.textMediumColor,
+                    ),
+                  ),
+                  Text(
+                    ext,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: widget.isMe ? Colors.white70 : AppTheme.textMediumColor,
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
+              // Timestamp at bottom right
+              Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.message.createdAt != null)
+                      Text(
+                        '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          color: widget.isMe ? Colors.white60 : AppTheme.textLightColor,
+                        ),
+                      ),
+                    if (widget.isMe) ...[
+                      SizedBox(width: 3.w),
+                      _buildReadStatus(),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildNoPreviewLayout(String fileName, String sizeStr, String ext, bool isUploading) {
+    return Padding(
+      padding: EdgeInsets.all(12.r),
+      child: Row(
+        children: [
+          // File icon in circle
+          Container(
+            width: 48.r,
+            height: 48.r,
+            decoration: BoxDecoration(
+              color: widget.isMe
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : AppTheme.primaryColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: _isDownloading
+                ? _buildDownloadProgressRing()
+                : (!_isDownloaded && !isUploading)
+                    ? Icon(
+                        Icons.download_rounded,
+                        color: widget.isMe ? Colors.white : AppTheme.primaryColor,
+                        size: 24.sp,
+                      )
+                    : Icon(
+                        _getFileIcon(fileName),
+                        color: widget.isMe ? Colors.white : AppTheme.primaryColor,
+                        size: 24.sp,
+                      ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  fileName,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: widget.isMe ? Colors.white : AppTheme.textDarkColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 2.h),
+                Row(
+                  children: [
+                    Text(
+                      isUploading
+                          ? 'Uploading...'
+                          : _isDownloading
+                          ? '${(_downloadProgress * 100).toInt()}%'
+                          : sizeStr,
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: widget.isMe ? Colors.white70 : AppTheme.textMediumColor,
+                      ),
+                    ),
+                    if (!isUploading && !_isDownloading)
+                      Text(
+                        ' • $ext',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: widget.isMe ? Colors.white70 : AppTheme.textMediumColor,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Timestamp and status
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.message.createdAt != null)
+                Text(
+                  '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    color: widget.isMe ? Colors.white60 : AppTheme.textLightColor,
+                  ),
+                ),
+              if (widget.isMe) ...[
+                SizedBox(width: 3.w),
+                _buildReadStatus(),
+              ],
+            ],
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildDownloadProgressRing() {
+    return SizedBox(
+      width: 24.r,
+      height: 24.r,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CircularProgressIndicator(
+            value: _downloadProgress > 0 ? _downloadProgress : null,
+            strokeWidth: 2.5,
+            backgroundColor: Colors.white.withValues(alpha: 0.3),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              widget.isMe ? Colors.white : AppTheme.primaryColor,
+            ),
+          ),
+          Center(
+            child: Icon(
+              Icons.download_rounded,
+              color: widget.isMe ? Colors.white : AppTheme.primaryColor,
+              size: 12.sp,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadStatus() {
+    if (widget.message.status == 'read') {
+      return Icon(
+        Icons.done_all,
+        size: 14.r,
+        color: const Color(0xFF53BDEB),
+      );
+    } else if (widget.message.status == 'delivered') {
+      return Icon(
+        Icons.done_all,
+        size: 14.r,
+        color: Colors.white.withValues(alpha: 0.6),
+      );
+    } else {
+      return Icon(
+        Icons.check,
+        size: 14.r,
+        color: Colors.white.withValues(alpha: 0.6),
+      );
+    }
+  }
+
+  IconData _getFileIcon(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return Icons.picture_as_pdf_rounded;
+      case 'doc':
+      case 'docx':
+        return Icons.description_rounded;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart_rounded;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow_rounded;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return Icons.folder_zip_rounded;
+      case 'mp3':
+      case 'wav':
+      case 'aac':
+        return Icons.audio_file_rounded;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+        return Icons.image_rounded;
+      default:
+        return Icons.insert_drive_file_rounded;
+    }
   }
 }
 

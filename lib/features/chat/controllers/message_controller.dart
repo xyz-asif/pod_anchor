@@ -187,6 +187,11 @@ class MessageController extends _$MessageController {
           .upload(filePath: filePath);
 
       // Step 3: Build metadata from upload result
+      String? thumbnailURL;
+      if (messageType == MessageType.file) {
+        thumbnailURL = CloudinaryService.generateDocumentThumbnail(uploadResult.secureUrl);
+      }
+
       final metadata = MediaMetadata(
         mimeType: mimeType,
         fileName: fileName,
@@ -194,6 +199,7 @@ class MessageController extends _$MessageController {
         width: uploadResult.width,
         height: uploadResult.height,
         duration: uploadResult.duration?.toInt(),
+        thumbnailURL: thumbnailURL,
       );
 
       // Step 4: Send URL to backend
