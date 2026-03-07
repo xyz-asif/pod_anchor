@@ -379,8 +379,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final messagesState = ref.watch(messageControllerProvider(widget.roomId));
     final typingState = ref.watch(typingControllerProvider(widget.roomId));
-    final currentUserId =
-        ref.watch(authControllerProvider).valueOrNull?.id ?? '';
+    // Get current user info
+    final currentUser = ref.read(authControllerProvider).valueOrNull;
+    final currentUserId = currentUser?.id ?? '';
 
     // Error snackbar & active reading & auto-scroll
     ref.listen(messageControllerProvider(widget.roomId), (prev, next) {
@@ -573,6 +574,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               onReplyTap: message.replyTo != null
                                   ? () => _scrollToMessage(message.replyTo!.id)
                                   : null,
+                              otherParticipantName: otherParticipant?.displayName,
+                              otherParticipantPhotoUrl: otherParticipant?.photoURL,
+                              currentUserName: currentUser?.displayName,
+                              currentUserPhotoUrl: currentUser?.photoURL,
                             ),
                           ],
                         );
@@ -953,12 +958,20 @@ class _MessageBubble extends StatelessWidget {
   final bool isMe;
   final VoidCallback onLongPress;
   final VoidCallback? onReplyTap;
+  final String? otherParticipantName;
+  final String? otherParticipantPhotoUrl;
+  final String? currentUserName;
+  final String? currentUserPhotoUrl;
 
   const _MessageBubble({
     required this.message,
     required this.isMe,
     required this.onLongPress,
     this.onReplyTap,
+    this.otherParticipantName,
+    this.otherParticipantPhotoUrl,
+    this.currentUserName,
+    this.currentUserPhotoUrl,
   });
 
   @override
@@ -986,7 +999,12 @@ class _MessageBubble extends StatelessWidget {
                     left: isMe ? 48.w : 0,
                     right: isMe ? 0 : 48.w,
                   ),
-                  child: MediaBubble(message: message, isMe: isMe),
+                  child: MediaBubble(
+                    message: message,
+                    isMe: isMe,
+                    senderName: isMe ? currentUserName : otherParticipantName,
+                    senderPhotoUrl: isMe ? currentUserPhotoUrl : otherParticipantPhotoUrl,
+                  ),
                 ),
                 // Floating reaction pill
                 if (hasReactions)
@@ -1403,6 +1421,8 @@ class _MessageContextMenuState extends State<_MessageContextMenu>
                           message: widget.message,
                           isMe: widget.isMe,
                           onLongPress: () {},
+                          otherParticipantName: null,
+                          otherParticipantPhotoUrl: null,
                         ),
                       ),
 

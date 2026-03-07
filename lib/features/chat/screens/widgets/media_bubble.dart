@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
@@ -18,8 +19,16 @@ final _dio = Dio();
 class MediaBubble extends StatelessWidget {
   final MessageResponse message;
   final bool isMe;
+  final String? senderName;
+  final String? senderPhotoUrl;
 
-  const MediaBubble({super.key, required this.message, required this.isMe});
+  const MediaBubble({
+    super.key,
+    required this.message,
+    required this.isMe,
+    this.senderName,
+    this.senderPhotoUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +40,12 @@ class MediaBubble extends StatelessWidget {
       case MessageType.file:
         return _FileBubble(message: message, isMe: isMe);
       case MessageType.audio:
-        return _AudioBubble(message: message, isMe: isMe);
+        return _AudioBubble(
+          message: message,
+          isMe: isMe,
+          senderName: senderName,
+          senderPhotoUrl: senderPhotoUrl,
+        );
       case MessageType.gif:
         return _GifBubble(message: message, isMe: isMe);
       case MessageType.link:
@@ -962,72 +976,154 @@ class _FileBubbleState extends State<_FileBubble> {
   }
 }
 
+// Global audio controller to manage single playback
+class _AudioController {
+  static final _AudioController _instance = _AudioController._internal();
+  factory _AudioController() => _instance;
+  _AudioController._internal();
+
+  final Set<String> _playingMessages = {};
+  final Map<String, VoidCallback> _pauseCallbacks = {};
+
+  void register(String messageId, VoidCallback onPauseOthers) {
+    _pauseCallbacks[messageId] = onPauseOthers;
+  }
+
+  void unregister(String messageId) {
+    _pauseCallbacks.remove(messageId);
+    _playingMessages.remove(messageId);
+  }
+
+  void play(String messageId) {
+    // Pause all other playing messages
+    for (final id in _playingMessages.toList()) {
+      if (id != messageId) {
+        _pauseCallbacks[id]?.call();
+      }
+    }
+    _playingMessages.clear();
+    _playingMessages.add(messageId);
+  }
+
+  void pause(String messageId) {
+    _playingMessages.remove(messageId);
+  }
+
+  bool isPlaying(String messageId) => _playingMessages.contains(messageId);
+}
+
+final _audioController = _AudioController();
+
 class _AudioBubble extends StatefulWidget {
   final MessageResponse message;
   final bool isMe;
+  final String? senderName;
+  final String? senderPhotoUrl;
 
-  const _AudioBubble({required this.message, required this.isMe});
+  const _AudioBubble({
+    required this.message,
+    required this.isMe,
+    this.senderName,
+    this.senderPhotoUrl,
+  });
 
   @override
   State<_AudioBubble> createState() => _AudioBubbleState();
 }
 
 class _AudioBubbleState extends State<_AudioBubble> {
-  AudioPlayer? _playerInstance;
-  AudioPlayer get _player => _playerInstance ??= AudioPlayer();
+  AudioPlayer? _player;
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
+    _audioController.register(widget.message.id, _pauseOthers);
     _initAudio();
   }
 
+  void _pauseOthers() {
+    if (mounted && _isPlaying) {
+      _player?.pause();
+    }
+  }
+
   Future<void> _initAudio() async {
+    if (_player != null || _isDisposed) return;
+    
     try {
-      _player.playerStateStream.listen((state) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = state.playing;
-            if (state.processingState == ProcessingState.completed) {
-              _isPlaying = false;
-              _player.seek(Duration.zero);
-              _player.pause();
-            }
-          });
+      _player = AudioPlayer();
+      
+      _player!.playerStateStream.listen((state) {
+        if (_isDisposed || !mounted) return;
+        
+        setState(() {
+          _isPlaying = state.playing;
+          if (state.processingState == ProcessingState.completed) {
+            _isPlaying = false;
+            _audioController.pause(widget.message.id);
+            _player?.seek(Duration.zero);
+            _player?.pause();
+          }
+        });
+        
+        if (state.playing) {
+          _audioController.play(widget.message.id);
+        } else {
+          _audioController.pause(widget.message.id);
         }
       });
 
-      _player.durationStream.listen((d) {
-        if (mounted && d != null) setState(() => _duration = d);
+      _player!.durationStream.listen((d) {
+        if (!_isDisposed && mounted && d != null) {
+          setState(() => _duration = d);
+        }
       });
 
-      _player.positionStream.listen((p) {
-        if (mounted) setState(() => _position = p);
+      _player!.positionStream.listen((p) {
+        if (!_isDisposed && mounted) {
+          setState(() => _position = p);
+        }
       });
 
-      // Pre-load the audio to get duration
+      // Pre-load the audio to get duration - don't await to avoid Future completion issues
       final isLocal = widget.message.status == 'uploading' &&
           !widget.message.content.startsWith('http');
       if (isLocal) {
-        await _player.setFilePath(widget.message.content);
+        _player!.setFilePath(widget.message.content).catchError((e) {
+          if (!_isDisposed) debugPrint('Error setting file path: $e');
+          return null;
+        });
       } else {
-        await _player.setUrl(widget.message.content);
+        _player!.setUrl(widget.message.content).catchError((e) {
+          if (!_isDisposed) debugPrint('Error setting URL: $e');
+          return null;
+        });
       }
-      _playerInstance = _player;
+    } on PlatformException catch (e) {
+      // Ignore "abort" errors from widget disposal during loading
+      if (e.code != 'abort' && !_isDisposed) {
+        debugPrint('Error loading audio: $e');
+      }
     } catch (e) {
-      debugPrint('Error loading audio: $e');
+      if (!_isDisposed) {
+        debugPrint('Error loading audio: $e');
+      }
     }
   }
 
   Future<void> _togglePlay() async {
+    if (_player == null || _isDisposed) return;
     try {
       if (_isPlaying) {
-        _player.pause();
+        await _player!.pause();
+        _audioController.pause(widget.message.id);
       } else {
-        _player.play();
+        await _player!.play();
+        _audioController.play(widget.message.id);
       }
     } catch (e) {
       debugPrint('Error playing audio: $e');
@@ -1036,8 +1132,11 @@ class _AudioBubbleState extends State<_AudioBubble> {
 
   @override
   void dispose() {
-    _playerInstance?.stop();
-    _playerInstance?.dispose();
+    _isDisposed = true;
+    _audioController.unregister(widget.message.id);
+    _player?.stop();
+    _player?.dispose();
+    _player = null;
     super.dispose();
   }
 
@@ -1068,21 +1167,34 @@ class _AudioBubbleState extends State<_AudioBubble> {
           // User Avatar with Mic overlay (WhatsApp style)
           Stack(
             children: [
-              // Avatar placeholder
+              // Avatar - show sender photo or first letter of name
               Container(
                 width: 44.r,
                 height: 44.r,
                 decoration: BoxDecoration(
-                  color: widget.isMe 
+                  color: widget.isMe
                       ? Colors.white.withValues(alpha: 0.2)
                       : Colors.grey.shade300,
                   shape: BoxShape.circle,
+                  image: widget.senderPhotoUrl != null
+                      ? DecorationImage(
+                          image: NetworkImage(widget.senderPhotoUrl!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
                 ),
-                child: Icon(
-                  Icons.person,
-                  color: widget.isMe ? Colors.white70 : Colors.grey.shade600,
-                  size: 28.r,
-                ),
+                child: widget.senderPhotoUrl == null
+                    ? Center(
+                        child: Text(
+                          _getInitials(widget.senderName),
+                          style: TextStyle(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.w600,
+                            color: widget.isMe ? Colors.white70 : Colors.grey.shade600,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
               // Mic icon overlay at bottom right
               Positioned(
@@ -1226,6 +1338,11 @@ class _AudioBubbleState extends State<_AudioBubble> {
         );
       }),
     );
+  }
+
+  String _getInitials(String? name) {
+    if (name == null || name.isEmpty) return '?';
+    return name.substring(0, 1).toUpperCase();
   }
 
   Widget _buildReadStatus() {
