@@ -81,7 +81,7 @@ class _ImageBubble extends StatelessWidget {
           Hero(
             tag: 'image_${message.id}',
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
+              borderRadius: BorderRadius.circular(4.r), // Reduced from 8.r for tighter WhatsApp-style
               child: isLocal
                   ? Image.file(
                       File(message.content),
@@ -279,7 +279,7 @@ class _GifBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12.r),
+      borderRadius: BorderRadius.circular(4.r), // Reduced from 12.r for tighter WhatsApp-style
       child: CachedNetworkImage(
         imageUrl: message.content,
         width: 220.w,
@@ -471,6 +471,7 @@ class _AudioBubbleState extends State<_AudioBubble> {
   @override
   void initState() {
     super.initState();
+    _initAudio();
   }
 
   Future<void> _initAudio() async {
@@ -495,27 +496,28 @@ class _AudioBubbleState extends State<_AudioBubble> {
       _player.positionStream.listen((p) {
         if (mounted) setState(() => _position = p);
       });
+
+      // Pre-load the audio to get duration
+      final isLocal = widget.message.status == 'uploading' &&
+          !widget.message.content.startsWith('http');
+      if (isLocal) {
+        await _player.setFilePath(widget.message.content);
+      } else {
+        await _player.setUrl(widget.message.content);
+      }
+      _playerInstance = _player;
     } catch (e) {
       debugPrint('Error loading audio: $e');
     }
   }
 
-  bool _isLoaded = false;
-  Future<void> _loadAndPlay() async {
+  Future<void> _togglePlay() async {
     try {
-      await _initAudio();
-      if (!_isLoaded) {
-        final isLocal =
-            widget.message.status == 'uploading' &&
-            !widget.message.content.startsWith('http');
-        if (isLocal) {
-          await _player.setFilePath(widget.message.content);
-        } else {
-          await _player.setUrl(widget.message.content);
-        }
-        _isLoaded = true;
+      if (_isPlaying) {
+        _player.pause();
+      } else {
+        _player.play();
       }
-      _player.play();
     } catch (e) {
       debugPrint('Error playing audio: $e');
     }
@@ -529,7 +531,7 @@ class _AudioBubbleState extends State<_AudioBubble> {
   }
 
   String _formatDuration(Duration d) {
-    final m = d.inMinutes.toString().padLeft(2, '0');
+    final m = d.inMinutes.toString().padLeft(1, '0');
     final s = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
   }
@@ -537,77 +539,203 @@ class _AudioBubbleState extends State<_AudioBubble> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      width: 280.w,
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
       decoration: BoxDecoration(
-        color: widget.isMe
-            ? Colors.white.withValues(alpha: 0.15)
-            : AppTheme.borderColor.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16.r),
+        color: widget.isMe 
+            ? AppTheme.primaryColor 
+            : AppTheme.featureBackgroundColor,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(16.r),
+          topRight: Radius.circular(16.r),
+          bottomLeft: Radius.circular(widget.isMe ? 16.r : 4.r),
+          bottomRight: Radius.circular(widget.isMe ? 4.r : 16.r),
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: Icon(
-              _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
-              color: widget.isMe ? Colors.white : AppTheme.primaryColor,
-              size: 32.sp,
-            ),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onPressed: () {
-              if (_isPlaying) {
-                _player.pause();
-              } else {
-                _loadAndPlay();
-              }
-            },
-          ),
-          SizedBox(width: 8.w),
-          Flexible(
-            child: SizedBox(
-              width: 120.w,
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 12,
-                  ),
-                  trackHeight: 2,
-                ),
-                child: Slider(
-                  value: _position.inMilliseconds.toDouble(),
-                  min: 0,
-                  max: _duration.inMilliseconds > 0
-                      ? _duration.inMilliseconds.toDouble()
-                      : 1,
-                  activeColor: widget.isMe
-                      ? Colors.white
-                      : AppTheme.primaryColor,
-                  inactiveColor: widget.isMe
-                      ? Colors.white38
+          // User Avatar with Mic overlay (WhatsApp style)
+          Stack(
+            children: [
+              // Avatar placeholder
+              Container(
+                width: 44.r,
+                height: 44.r,
+                decoration: BoxDecoration(
+                  color: widget.isMe 
+                      ? Colors.white.withValues(alpha: 0.2)
                       : Colors.grey.shade300,
-                  onChanged: (val) {
-                    _player.seek(Duration(milliseconds: val.toInt()));
-                  },
+                  shape: BoxShape.circle,
                 ),
+                child: Icon(
+                  Icons.person,
+                  color: widget.isMe ? Colors.white70 : Colors.grey.shade600,
+                  size: 28.r,
+                ),
+              ),
+              // Mic icon overlay at bottom right
+              Positioned(
+                right: -2.w,
+                bottom: -2.h,
+                child: Container(
+                  padding: EdgeInsets.all(3.r),
+                  decoration: BoxDecoration(
+                    color: widget.isMe 
+                        ? AppTheme.primaryColor
+                        : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: widget.isMe 
+                          ? AppTheme.primaryColor
+                          : Colors.white,
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.mic,
+                    size: 12.r,
+                    color: widget.isMe ? Colors.white : AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(width: 12.w),
+          
+          // Play/Pause button
+          GestureDetector(
+            onTap: _togglePlay,
+            child: Container(
+              width: 36.r,
+              height: 36.r,
+              decoration: BoxDecoration(
+                color: widget.isMe 
+                    ? Colors.white.withValues(alpha: 0.2)
+                    : AppTheme.primaryColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isPlaying ? Icons.pause : Icons.play_arrow,
+                color: widget.isMe ? Colors.white : AppTheme.primaryColor,
+                size: 20.r,
               ),
             ),
           ),
-          SizedBox(width: 8.w),
-          Text(
-            widget.message.status == 'uploading'
-                ? '...'
-                : '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
-            style: TextStyle(
-              fontSize: 10.sp,
-              color: widget.isMe ? Colors.white70 : AppTheme.textMediumColor,
+          SizedBox(width: 10.w),
+          
+          // Waveform visualization
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Waveform bars
+                SizedBox(
+                  height: 26.h,
+                  child: _buildWaveform(),
+                ),
+                SizedBox(height: 4.h),
+                // Duration and timestamp row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      widget.message.status == 'uploading'
+                          ? '...'
+                          : _formatDuration(_position),
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: widget.isMe 
+                            ? Colors.white.withValues(alpha: 0.8)
+                            : AppTheme.textMediumColor,
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.message.createdAt != null)
+                          Text(
+                            '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                              fontSize: 10.sp,
+                              color: widget.isMe 
+                                  ? Colors.white.withValues(alpha: 0.7)
+                                  : AppTheme.textLightColor,
+                            ),
+                          ),
+                        if (widget.isMe) ...[
+                          SizedBox(width: 4.w),
+                          _buildReadStatus(),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildWaveform() {
+    final barCount = 28;
+    final progress = _duration.inMilliseconds > 0
+        ? _position.inMilliseconds / _duration.inMilliseconds
+        : 0.0;
+    final activeBars = (barCount * progress).round();
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: List.generate(barCount, (index) {
+        // Generate pseudo-random heights based on index
+        final heights = [8, 14, 10, 18, 12, 16, 8, 20, 14, 10, 16, 8, 18, 12, 
+                        20, 10, 14, 8, 16, 12, 18, 10, 14, 8, 16, 12, 20, 10];
+        final height = heights[index % heights.length].h;
+        final isActive = index <= activeBars;
+        final isCurrent = index == activeBars && _isPlaying;
+
+        return Container(
+          width: 3.w,
+          height: height,
+          decoration: BoxDecoration(
+            color: isCurrent
+                ? const Color(0xFF53BDEB) // Blue dot for current position
+                : isActive
+                    ? (widget.isMe 
+                        ? const Color(0xFF53BDEB) // Blue for played portion
+                        : AppTheme.primaryColor)
+                    : (widget.isMe 
+                        ? Colors.white.withValues(alpha: 0.3) // White for unplayed
+                        : Colors.grey.shade400),
+            borderRadius: BorderRadius.circular(2.r),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildReadStatus() {
+    if (widget.message.status == 'read') {
+      return Icon(
+        Icons.done_all,
+        size: 14.r,
+        color: const Color(0xFF53BDEB), // Blue checkmarks for read
+      );
+    } else if (widget.message.status == 'delivered') {
+      return Icon(
+        Icons.done_all,
+        size: 14.r,
+        color: Colors.white.withValues(alpha: 0.6),
+      );
+    } else {
+      return Icon(
+        Icons.check,
+        size: 14.r,
+        color: Colors.white.withValues(alpha: 0.6),
+      );
+    }
   }
 }
