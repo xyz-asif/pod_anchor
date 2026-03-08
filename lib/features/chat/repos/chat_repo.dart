@@ -1,5 +1,6 @@
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/features/chat/models/media_metadata.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -65,12 +66,19 @@ class ChatRepo {
   }
 
   /// Send a message in a room.
+  ///
+  /// Supports both text and media messages:
+  /// - [type] defaults to 'text'
+  /// - [metadata] is optional media information (dimensions, file info, etc.)
   Future<MessageResponse> sendMessage({
     required String roomId,
     required String content,
+    String type = 'text',
+    MediaMetadata? metadata,
     String? replyToId,
   }) async {
-    final data = <String, dynamic>{'content': content};
+    final data = <String, dynamic>{'content': content, 'type': type};
+    if (metadata != null) data['metadata'] = metadata.toJson();
     if (replyToId != null) data['replyToId'] = replyToId;
 
     final response = await apiClient.post(

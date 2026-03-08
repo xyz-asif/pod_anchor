@@ -13,6 +13,7 @@ MessageResponse _$MessageResponseFromJson(Map<String, dynamic> json) =>
       senderId: json['senderId'] as String,
       content: json['content'] as String,
       status: json['status'] as String? ?? 'sent',
+      type: json['type'] as String? ?? 'text',
       reactions:
           (json['reactions'] as Map<String, dynamic>?)?.map(
             (k, e) => MapEntry(k, e as String),
@@ -21,6 +22,9 @@ MessageResponse _$MessageResponseFromJson(Map<String, dynamic> json) =>
       replyTo: json['replyTo'] == null
           ? null
           : ReplyTo.fromJson(json['replyTo'] as Map<String, dynamic>),
+      metadata: json['metadata'] == null
+          ? null
+          : MediaMetadata.fromJson(json['metadata'] as Map<String, dynamic>),
       isEdited: json['isEdited'] as bool? ?? false,
       isDeleted: json['isDeleted'] as bool? ?? false,
       createdAt: json['createdAt'] == null
@@ -38,8 +42,10 @@ Map<String, dynamic> _$MessageResponseToJson(MessageResponse instance) =>
       'senderId': instance.senderId,
       'content': instance.content,
       'status': instance.status,
+      'type': instance.type,
       'reactions': instance.reactions,
       'replyTo': instance.replyTo,
+      'metadata': instance.metadata,
       'isEdited': instance.isEdited,
       'isDeleted': instance.isDeleted,
       'createdAt': instance.createdAt?.toIso8601String(),

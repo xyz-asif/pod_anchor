@@ -8,6 +8,7 @@ part 'room_response.g.dart';
 /// - `unreadCount`: for badge display
 /// - `participants[i].isOnline`: for green dot on avatar
 /// - `lastMessage` + `lastMessageSenderName`: for chat list preview
+/// - `lastMessageType`: for media-aware preview (e.g., "📷 Photo")
 @JsonSerializable()
 class RoomResponse {
   final String id;
@@ -16,6 +17,7 @@ class RoomResponse {
   final List<ParticipantInfo> participants;
   final String? lastMessage;
   final String? lastMessageSenderName;
+  final String? lastMessageType;
   final int unreadCount;
   final DateTime? lastUpdated;
 
@@ -26,6 +28,7 @@ class RoomResponse {
     this.participants = const [],
     this.lastMessage,
     this.lastMessageSenderName,
+    this.lastMessageType,
     this.unreadCount = 0,
     this.lastUpdated,
   });
@@ -42,6 +45,7 @@ class RoomResponse {
     List<ParticipantInfo>? participants,
     String? lastMessage,
     String? lastMessageSenderName,
+    String? lastMessageType,
     int? unreadCount,
     DateTime? lastUpdated,
   }) {
@@ -53,6 +57,7 @@ class RoomResponse {
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageSenderName:
           lastMessageSenderName ?? this.lastMessageSenderName,
+      lastMessageType: lastMessageType ?? this.lastMessageType,
       unreadCount: unreadCount ?? this.unreadCount,
       lastUpdated: lastUpdated ?? this.lastUpdated,
     );
