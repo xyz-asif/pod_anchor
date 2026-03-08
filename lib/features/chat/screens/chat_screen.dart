@@ -24,6 +24,7 @@ import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/chat/controllers/chat_state_controller.dart';
+import 'package:chatbee/features/chat/models/reply_to.dart';
 
 /// Chat screen — message list with input bar.
 ///
@@ -314,6 +315,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageController.clear();
   }
 
+  /// Set reply and scroll to bottom if needed
   void _setReply(MessageResponse message) {
     final content = message.isMedia
         ? message.messageType.previewText(message.metadata?.fileName)
@@ -322,6 +324,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .read(chatInputControllerProvider(widget.roomId).notifier)
         .setReply(message.id, content);
     _messageController.clear();
+    
+    // Scroll to bottom if user is scrolled up
+    if (_scrollController.hasClients && _scrollController.position.pixels > 150) {
+      _scrollToBottom();
+    }
   }
 
   void _setEdit(String messageId, String content) {
@@ -430,7 +437,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             } else if (_scrollController.hasClients &&
                 _scrollController.position.pixels > 150) {
               // User is scrolled up — increment unread badge
-              setState(() => _newMessageCount++);
+              // Only count messages from OTHER users (not self)
+              if (lastMsg.senderId != currentUserId) {
+                setState(() => _newMessageCount++);
+              }
             }
           }
         },
@@ -557,6 +567,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     return ListView.builder(
                       controller: _scrollController,
                       reverse: true,
+                      cacheExtent: 500, // Cache more items for smoother scrolling
                       padding: EdgeInsets.symmetric(
                         horizontal: 12.w,
                         vertical: 8.h,
@@ -586,6 +597,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               onReplyTap: message.replyTo != null
                                   ? () => _scrollToMessage(message.replyTo!.id)
                                   : null,
+                              onReply: () => _setReply(message),
+                              currentUserId: currentUserId,
                               otherParticipantName: otherParticipant?.displayName,
                               otherParticipantPhotoUrl: otherParticipant?.photoURL,
                               currentUserName: currentUser?.displayName,
@@ -964,12 +977,14 @@ class _DateSeparator extends StatelessWidget {
   }
 }
 
-/// Individual message bubble.
+/// Individual message bubble with swipe-to-reply support.
 class _MessageBubble extends StatelessWidget {
   final MessageResponse message;
   final bool isMe;
   final VoidCallback onLongPress;
   final VoidCallback? onReplyTap;
+  final VoidCallback? onReply; // Swipe to reply callback
+  final String? currentUserId; // For reply preview comparison
   final String? otherParticipantName;
   final String? otherParticipantPhotoUrl;
   final String? currentUserName;
@@ -980,6 +995,8 @@ class _MessageBubble extends StatelessWidget {
     required this.isMe,
     required this.onLongPress,
     this.onReplyTap,
+    this.onReply,
+    this.currentUserId,
     this.otherParticipantName,
     this.otherParticipantPhotoUrl,
     this.currentUserName,
@@ -1072,214 +1089,301 @@ class _MessageBubble extends StatelessWidget {
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
         padding: EdgeInsets.only(bottom: hasReactions ? 12.h : 0),
-        child: GestureDetector(
-          onLongPress: onLongPress,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Message bubble container - reduced padding for media
-              Container(
-                constraints: BoxConstraints(maxWidth: 280.w),
-                margin: EdgeInsets.only(
-                  top: 2.h,
-                  bottom: 2.h,
-                  left: isMe ? 48.w : 0,
-                  right: isMe ? 0 : 48.w,
-                ),
-                padding: message.isMedia
-                    ? EdgeInsets.zero // No padding for media
-                    : EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: isDeleted
-                      ? Colors.grey.shade100
-                      : isMe
-                      ? AppTheme.primaryColor
-                      : AppTheme.featureBackgroundColor,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(16.r),
-                    topRight: Radius.circular(16.r),
-                    bottomLeft: Radius.circular(isMe ? 16.r : 4.r),
-                    bottomRight: Radius.circular(isMe ? 4.r : 16.r),
+        child: Dismissible(
+          key: ValueKey('swipe_${message.id}'),
+          direction: isMe ? DismissDirection.endToStart : DismissDirection.startToEnd,
+          confirmDismiss: (direction) async {
+            if (onReply != null) {
+              onReply!();
+            }
+            return false; // Don't actually dismiss, just trigger reply
+          },
+          background: Container(
+            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+            padding: EdgeInsets.symmetric(horizontal: 20.w),
+            child: Container(
+              padding: EdgeInsets.all(8.r),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.reply_rounded,
+                color: AppTheme.primaryColor,
+                size: 24.sp,
+              ),
+            ),
+          ),
+          child: GestureDetector(
+            onLongPress: onLongPress,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Message bubble container - flexible width for better performance
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: message.isMedia ? 220.w : 280.w,
+                    minWidth: message.isMedia ? 220.w : 60.w,
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    // Reply preview (tappable to scroll to original)
-                    if (message.replyTo != null)
-                      GestureDetector(
-                        onTap: onReplyTap,
-                        child: Container(
-                          width: double.infinity,
-                          margin: EdgeInsets.only(bottom: 4.h),
-                          padding: EdgeInsets.all(8.r),
-                          decoration: BoxDecoration(
-                            color: isMe
-                                ? Colors.white.withValues(alpha: 0.15)
-                                : AppTheme.borderColor.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                          child: Text(
-                            message.replyTo!.isMedia
-                                ? message.replyTo!.messageType.previewText(
-                                    message.replyTo!.metadata?.fileName,
-                                  )
-                                : message.replyTo!.content,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: isMe
-                                  ? Colors.white70
-                                  : AppTheme.textMediumColor,
-                              fontStyle: FontStyle.italic,
+                  margin: EdgeInsets.only(
+                    top: 2.h,
+                    bottom: 2.h,
+                    left: isMe ? 48.w : 0,
+                    right: isMe ? 0 : 48.w,
+                  ),
+                  padding: message.isMedia
+                      ? EdgeInsets.zero // No padding for media
+                      : EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: isDeleted
+                        ? Colors.grey.shade100
+                        : isMe
+                        ? AppTheme.primaryColor
+                        : AppTheme.featureBackgroundColor,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16.r),
+                      topRight: Radius.circular(16.r),
+                      bottomLeft: Radius.circular(isMe ? 16.r : 4.r),
+                      bottomRight: Radius.circular(isMe ? 4.r : 16.r),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                        // Reply preview (tappable to scroll to original)
+                        if (message.replyTo != null)
+                          GestureDetector(
+                            onTap: onReplyTap,
+                            child: _ReplyPreview(
+                              message: message.replyTo!,
+                              isMe: isMe,
+                              senderName: message.replyTo!.senderId == currentUserId
+                                  ? (isMe ? 'You' : otherParticipantName ?? 'Other')
+                                  : (isMe ? otherParticipantName ?? 'Other' : 'You'),
                             ),
                           ),
-                        ),
-                      ),
 
-                    // Message content with inline timestamp
-                    if (message.isMedia)
-                      // Media messages include their own timestamp
-                      MediaBubble(message: message, isMe: isMe)
-                    else
-                      // Text messages: inline floating timestamp (WhatsApp-style)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Link preview if URL is detected
-                          if (LinkExtractor.extractUrl(message.content) != null)
-                            Padding(
-                              padding: EdgeInsets.only(bottom: 8.h),
-                              child: LinkPreviewWidget(
-                                url: LinkExtractor.extractUrl(message.content)!,
-                                isMe: isMe,
-                              ),
-                            ),
-                          Stack(
-                            alignment: AlignmentDirectional.bottomEnd,
+                        // Message content with inline timestamp
+                        if (message.isMedia)
+                          // Media messages include their own timestamp
+                          MediaBubble(message: message, isMe: isMe)
+                        else
+                          // Text messages: inline floating timestamp (WhatsApp-style)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Padding(
-                                padding: EdgeInsets.only(bottom: 2.h, right: isMe ? 68.w : 46.w),
-                                child: Linkify(
-                                  text: message.content,
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    color: isDeleted
-                                        ? AppTheme.textMediumColor
-                                        : isMe
-                                        ? Colors.white
-                                        : AppTheme.textDarkColor,
-                                    fontStyle: isDeleted
-                                        ? FontStyle.italic
-                                        : FontStyle.normal,
+                              // Link preview if URL is detected
+                              if (LinkExtractor.extractUrl(message.content) != null)
+                                Padding(
+                                  padding: EdgeInsets.only(bottom: 8.h),
+                                  child: LinkPreviewWidget(
+                                    url: LinkExtractor.extractUrl(message.content)!,
+                                    isMe: isMe,
                                   ),
-                                  linkStyle: TextStyle(
-                                    fontSize: 14.sp,
-                                    color: isDeleted
-                                        ? AppTheme.textMediumColor
-                                        : isMe
-                                        ? Colors.white70
-                                        : AppTheme.primaryColor,
-                                    fontStyle: isDeleted
-                                        ? FontStyle.italic
-                                        : FontStyle.normal,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                  onOpen: (link) async {
-                                    final uri = Uri.parse(link.url);
-                                    if (await canLaunchUrl(uri)) {
-                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                    }
-                                  },
                                 ),
-                              ),
-                              // Floating timestamp + status
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
+                              Stack(
+                                alignment: AlignmentDirectional.bottomEnd,
                                 children: [
-                                  if (message.isEdited)
-                                    Text(
-                                      'edited ',
+                                  Padding(
+                                    padding: EdgeInsets.only(bottom: 2.h, right: isMe ? 68.w : 46.w),
+                                    child: Linkify(
+                                      text: message.content,
                                       style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: isMe
-                                            ? Colors.white60
-                                            : AppTheme.textLightColor,
-                                        fontStyle: FontStyle.italic,
+                                        fontSize: 14.sp,
+                                        color: isDeleted
+                                            ? AppTheme.textMediumColor
+                                            : isMe
+                                            ? Colors.white
+                                            : AppTheme.textDarkColor,
+                                        fontStyle: isDeleted
+                                            ? FontStyle.italic
+                                            : FontStyle.normal,
                                       ),
-                                    ),
-                                  if (message.createdAt != null)
-                                    Text(
-                                      '${message.createdAt!.hour.toString().padLeft(2, '0')}:${message.createdAt!.minute.toString().padLeft(2, '0')}',
-                                      style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: isMe
-                                            ? Colors.white60
-                                            : AppTheme.textLightColor,
+                                      linkStyle: TextStyle(
+                                        fontSize: 14.sp,
+                                        color: isDeleted
+                                            ? AppTheme.textMediumColor
+                                            : isMe
+                                            ? Colors.white70
+                                            : AppTheme.primaryColor,
+                                        fontStyle: isDeleted
+                                            ? FontStyle.italic
+                                            : FontStyle.normal,
+                                        decoration: TextDecoration.underline,
                                       ),
+                                      onOpen: (link) async {
+                                        try {
+                                          final uri = Uri.parse(link.url);
+                                          if (await canLaunchUrl(uri)) {
+                                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                          } else {
+                                            debugPrint('Could not launch link: ${link.url}');
+                                          }
+                                        } catch (e) {
+                                          debugPrint('Error launching link: $e');
+                                        }
+                                      },
                                     ),
-                                  if (isMe) ...[
-                                    SizedBox(width: 3.w),
-                                    _StatusIcon(status: message.status, isMe: isMe),
-                                  ],
+                                  ),
+                                  // Floating timestamp + status
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (message.isEdited)
+                                        Text(
+                                          'edited ',
+                                          style: TextStyle(
+                                            fontSize: 10.sp,
+                                            color: isMe
+                                                ? Colors.white60
+                                                : AppTheme.textLightColor,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      if (message.createdAt != null)
+                                        Text(
+                                          '${message.createdAt!.hour.toString().padLeft(2, '0')}:${message.createdAt!.minute.toString().padLeft(2, '0')}',
+                                          style: TextStyle(
+                                            fontSize: 10.sp,
+                                            color: isMe
+                                                ? Colors.white60
+                                                : AppTheme.textLightColor,
+                                          ),
+                                        ),
+                                      if (isMe) ...[
+                                        SizedBox(width: 3.w),
+                                        _StatusIcon(status: message.status, isMe: isMe),
+                                      ],
+                                    ],
+                                  ),
                                 ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-
-              // Floating reaction pill (Instagram-style)
-              if (hasReactions)
-                Positioned(
-                  bottom: -10.h,
-                  left: isMe ? null : 12.w,
-                  right: isMe ? 12.w : null,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      borderRadius: BorderRadius.circular(12.r),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
                       ],
-                      border: Border.all(
-                        color: AppTheme.borderColor.withValues(alpha: 0.3),
-                        width: 0.5,
-                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: message.reactions.values.toSet().map((emoji) {
-                        final count = message.reactions.values
-                            .where((e) => e == emoji)
-                            .length;
-                        return Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 2.w),
-                          child: Text(
-                            count > 1 ? '$emoji $count' : emoji,
-                            style: TextStyle(fontSize: 14.sp),
+                ),
+
+                // Floating reaction pill (Instagram-style)
+                if (hasReactions)
+                  Positioned(
+                    bottom: -10.h,
+                    left: isMe ? null : 12.w,
+                    right: isMe ? 12.w : null,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6.w,
+                        vertical: 2.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        borderRadius: BorderRadius.circular(12.r),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
                           ),
-                        );
-                      }).toList(),
+                        ],
+                        border: Border.all(
+                          color: AppTheme.borderColor.withValues(alpha: 0.3),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: message.reactions.values.toSet().map((emoji) {
+                          final count = message.reactions.values
+                              .where((e) => e == emoji)
+                              .length;
+                          return Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 2.w),
+                            child: Text(
+                              count > 1 ? '$emoji $count' : emoji,
+                              style: TextStyle(fontSize: 14.sp),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Enhanced reply preview widget with better styling
+class _ReplyPreview extends StatelessWidget {
+  final ReplyTo message;
+  final bool isMe;
+  final String senderName;
+
+  const _ReplyPreview({
+    required this.message,
+    required this.isMe,
+    required this.senderName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.only(bottom: 6.h),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Left accent bar
+          Container(
+            width: 3.w,
+            height: 32.h,
+            decoration: BoxDecoration(
+              color: isMe ? Colors.white.withValues(alpha: 0.5) : AppTheme.primaryColor,
+              borderRadius: BorderRadius.circular(2.r),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Sender name
+                Text(
+                  senderName,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: isMe
+                        ? Colors.white.withValues(alpha: 0.9)
+                        : AppTheme.primaryColor,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                // Message content preview
+                Text(
+                  message.isMedia
+                      ? message.messageType.previewText(message.metadata?.fileName)
+                      : message.content,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: isMe
+                        ? Colors.white70
+                        : AppTheme.textMediumColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

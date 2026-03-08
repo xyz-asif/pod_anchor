@@ -65,9 +65,15 @@ class LinkPreviewWidget extends StatelessWidget {
         ),
       ),
       onTap: () async {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        try {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            debugPrint('Could not launch URL: $url');
+          }
+        } catch (e) {
+          debugPrint('Error launching URL: $e');
         }
       },
       placeholderWidget: Container(

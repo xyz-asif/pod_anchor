@@ -358,95 +358,286 @@ class _ImageBubbleState extends State<_ImageBubble> {
   }
 }
 
-class _VideoBubble extends StatelessWidget {
+class _VideoBubble extends StatefulWidget {
   final MessageResponse message;
   final bool isMe;
 
   const _VideoBubble({required this.message, required this.isMe});
 
   @override
-  Widget build(BuildContext context) {
-    final isUploading = message.status == 'uploading';
-    final duration = message.metadata?.duration ?? 0;
+  State<_VideoBubble> createState() => _VideoBubbleState();
+}
 
-    // Format duration from seconds to MM:SS
-    final minutes = (duration / 60).floor().toString().padLeft(2, '0');
-    final seconds = (duration % 60).floor().toString().padLeft(2, '0');
+class _VideoBubbleState extends State<_VideoBubble> {
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  bool _isDownloaded = false;
 
-    final isLocal = isUploading && !message.content.startsWith('http');
+  @override
+  void initState() {
+    super.initState();
+    _checkIfDownloaded();
+  }
 
-    return GestureDetector(
-      onTap: () {
-        if (isUploading) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => FullScreenVideoPlayer(
-              urlOrPath: message.content,
-              isLocal: isLocal,
-            ),
+  Future<void> _checkIfDownloaded() async {
+    final dir = await getTemporaryDirectory();
+    final fileName = widget.message.metadata?.fileName ?? 'video_${widget.message.id}.mp4';
+    final savePath = '${dir.path}/${widget.message.id}_$fileName';
+    final file = File(savePath);
+    if (await file.exists()) {
+      setState(() => _isDownloaded = true);
+    }
+  }
+
+  Future<void> _handleDownload() async {
+    if (_isDownloaded) return;
+
+    final isUploading = widget.message.status == 'uploading';
+    final videoUrl = widget.message.content;
+
+    if (isUploading || !videoUrl.startsWith('http')) return;
+
+    try {
+      setState(() {
+        _isDownloading = true;
+        _downloadProgress = 0.0;
+      });
+
+      final dir = await getTemporaryDirectory();
+      final fileName = widget.message.metadata?.fileName ?? 'video_${widget.message.id}.mp4';
+      final savePath = '${dir.path}/${widget.message.id}_$fileName';
+      final file = File(savePath);
+
+      if (!await file.exists()) {
+        var downloadUrl = videoUrl;
+        if (downloadUrl.contains('cloudinary.com')) {
+          downloadUrl = '$downloadUrl?download=true';
+        }
+
+        await _dio.download(
+          downloadUrl,
+          savePath,
+          options: Options(
+            headers: {'Accept': '*/*'},
+            followRedirects: true,
+            validateStatus: (status) => status != null && status < 500,
           ),
+          onReceiveProgress: (received, total) {
+            if (total > 0 && mounted) {
+              setState(() => _downloadProgress = received / total);
+            }
+          },
         );
-      },
-      child: Container(
-        width: 220.w,
-        height: 220.w,
-        decoration: BoxDecoration(
-          color: Colors.black87,
-          borderRadius: BorderRadius.circular(8.r),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Video Thumbnail
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: _buildThumbnail(
-                message.content,
-                message.metadata?.thumbnailURL,
-              ),
-            ),
+      }
 
-            // Play icon overlay
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.play_circle_fill_rounded,
-                color: Colors.white.withValues(alpha: isUploading ? 0.3 : 0.9),
-                size: 64.sp,
-              ),
-            ),
+      setState(() {
+        _isDownloaded = true;
+        _isDownloading = false;
+      });
+    } catch (e) {
+      debugPrint('Error downloading video: $e');
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = 0.0;
+        });
+      }
+    }
+  }
 
-            if (isUploading)
-              const CircularProgressIndicator(color: Colors.white),
+  void _handleTap() {
+    final isUploading = widget.message.status == 'uploading';
+    if (isUploading) return;
 
-            // Duration badge
-            Positioned(
-              bottom: 8.h,
-              right: 8.w,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Text(
-                  '$minutes:$seconds',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10.sp,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
+    final isLocal = isUploading && !widget.message.content.startsWith('http');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullScreenVideoPlayer(
+          urlOrPath: widget.message.content,
+          isLocal: isLocal,
         ),
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isUploading = widget.message.status == 'uploading';
+    final duration = widget.message.metadata?.duration ?? 0;
+    final minutes = (duration / 60).floor().toString().padLeft(2, '0');
+    final seconds = (duration % 60).floor().toString().padLeft(2, '0');
+    final isLocal = isUploading && !widget.message.content.startsWith('http');
+    final showDownload = !isUploading && !isLocal && !_isDownloaded;
+
+    return GestureDetector(
+      onTap: _handleTap,
+      child: Stack(
+        children: [
+          Container(
+            width: 220.w,
+            height: 220.w,
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8.r),
+                  child: _buildThumbnail(
+                    widget.message.content,
+                    widget.message.metadata?.thumbnailURL,
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: Colors.white.withValues(alpha: isUploading ? 0.3 : 0.9),
+                    size: 64.sp,
+                  ),
+                ),
+                if (isUploading)
+                  const CircularProgressIndicator(color: Colors.white),
+                // Duration badge at bottom right of video
+                Positioned(
+                  bottom: 8.h,
+                  right: 8.w,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(4.r),
+                    ),
+                    child: Text(
+                      '$minutes:$seconds',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                // Download button overlay
+                if (showDownload && !_isDownloading)
+                  Positioned(
+                    right: 8.w,
+                    top: 8.h,
+                    child: GestureDetector(
+                      onTap: _handleDownload,
+                      child: Container(
+                        padding: EdgeInsets.all(8.r),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.download_rounded,
+                          color: Colors.white,
+                          size: 24.sp,
+                        ),
+                      ),
+                    ),
+                  ),
+                // Download progress ring
+                if (_isDownloading)
+                  Positioned(
+                    right: 8.w,
+                    top: 8.h,
+                    child: Container(
+                      padding: EdgeInsets.all(8.r),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: SizedBox(
+                        width: 24.r,
+                        height: 24.r,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CircularProgressIndicator(
+                              value: _downloadProgress > 0 ? _downloadProgress : null,
+                              strokeWidth: 2.5,
+                              backgroundColor: Colors.white.withValues(alpha: 0.3),
+                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                            Center(
+                              child: Icon(
+                                Icons.download_rounded,
+                                color: Colors.white,
+                                size: 12.sp,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // Timestamp and status overlay at bottom right (outside video container)
+          Positioned(
+            right: 8.w,
+            bottom: 8.h,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(4.r),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.message.createdAt != null)
+                    Text(
+                      '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: 10.sp,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  if (widget.isMe) ...[
+                    SizedBox(width: 3.w),
+                    _buildReadStatus(),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadStatus() {
+    if (widget.message.status == 'read') {
+      return Icon(
+        Icons.done_all,
+        size: 12.r,
+        color: const Color(0xFF53BDEB),
+      );
+    } else if (widget.message.status == 'delivered') {
+      return Icon(
+        Icons.done_all,
+        size: 12.r,
+        color: Colors.white.withValues(alpha: 0.7),
+      );
+    } else {
+      return Icon(
+        Icons.check,
+        size: 12.r,
+        color: Colors.white.withValues(alpha: 0.7),
+      );
+    }
   }
 
   Widget _buildThumbnail(String videoUrl, String? thumbnailUrl) {
@@ -459,13 +650,11 @@ class _VideoBubble extends StatelessWidget {
       );
     }
 
-    // Attempt to generate Cloudinary thumbnail URL if it's a Cloudinary link
     if (videoUrl.contains('cloudinary.com/')) {
       final thumbUrl = videoUrl.replaceAll(
         '/video/upload/',
         '/video/upload/so_auto,c_fill,h_400,w_400/',
       );
-      // Replace extension to jpg for better compatibility as a thumbnail
       final jpgThumbUrl = thumbUrl.replaceFirst(RegExp(r'\.[^.]+$'), '.jpg');
 
       return CachedNetworkImage(
@@ -1195,20 +1384,23 @@ class _AudioBubbleState extends State<_AudioBubble> {
         }
       });
 
-      // Pre-load the audio to get duration - don't await to avoid Future completion issues
+      // Pre-load the audio to get duration - handle async properly
       final isLocal = widget.message.status == 'uploading' &&
           !widget.message.content.startsWith('http');
-      if (isLocal) {
-        _player!.setFilePath(widget.message.content).catchError((e) {
-          if (!_isDisposed) debugPrint('Error setting file path: $e');
-          return null;
-        });
-      } else {
-        _player!.setUrl(widget.message.content).catchError((e) {
-          if (!_isDisposed) debugPrint('Error setting URL: $e');
-          return null;
-        });
-      }
+      
+      Future.microtask(() async {
+        if (_isDisposed || _player == null) return;
+        
+        try {
+          if (isLocal) {
+            await _player!.setFilePath(widget.message.content);
+          } else {
+            await _player!.setUrl(widget.message.content);
+          }
+        } catch (e) {
+          if (!_isDisposed) debugPrint('Error setting audio source: $e');
+        }
+      });
     } on PlatformException catch (e) {
       // Ignore "abort" errors from widget disposal during loading
       if (e.code != 'abort' && !_isDisposed) {
