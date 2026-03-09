@@ -93,7 +93,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         return MaterialApp.router(
           title: 'ChatBee',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.light,
+          theme: AppTheme.dark,
           darkTheme: AppTheme.dark,
           themeMode: ThemeMode.light,
           routerConfig: router,
