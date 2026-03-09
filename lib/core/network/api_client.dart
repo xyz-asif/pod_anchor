@@ -75,6 +75,12 @@ class ApiClient {
     print('🗑️ Token cleared from storage and headers');
   }
 
+  /// Check if token is currently set in headers
+  bool get hasToken {
+    return _dio.options.headers.containsKey('Authorization') &&
+        _dio.options.headers['Authorization'] != null;
+  }
+
   /// GET request
   Future<ApiResponse> get(
     String path, {

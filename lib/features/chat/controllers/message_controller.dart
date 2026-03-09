@@ -189,7 +189,9 @@ class MessageController extends _$MessageController {
       // Step 3: Build metadata from upload result
       String? thumbnailURL;
       if (messageType == MessageType.file) {
-        thumbnailURL = CloudinaryService.generateDocumentThumbnail(uploadResult.secureUrl);
+        thumbnailURL = CloudinaryService.generateDocumentThumbnail(
+          uploadResult.secureUrl,
+        );
       }
 
       final metadata = MediaMetadata(

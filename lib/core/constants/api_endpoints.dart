@@ -5,7 +5,9 @@ class ApiEndpoints {
 
   // Base URL — change per environment
   // static const String baseUrl = 'http://10.193.113.78:8080/api/v1';
+  // static const String baseUrl = 'http://192.168.1.132:8080/api/v1';
   static const String baseUrl = 'http://asifs-macbook-air.local:8080/api/v1';
+  // static const String baseUrl = 'https://YOUR_NGROK_URL.ngrok.io/api/v1';
 
   // ── Users ──
   static const String usersMe = '/users/me';

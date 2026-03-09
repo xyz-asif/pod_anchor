@@ -6,7 +6,7 @@ part of 'ws_event_handler.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$wsEventHandlerHash() => r'2d476fe55f08b39671e8b977bbab39df23145205';
+String _$wsEventHandlerHash() => r'8cccad6c076cc492afd34b3ee4556035339f447c';
 
 /// Listens to WebSocket events and dispatches them to the correct controllers.
 ///

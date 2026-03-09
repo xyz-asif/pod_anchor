@@ -7,6 +7,7 @@ import 'package:chatbee/features/connections/controllers/friends_controller.dart
 import 'package:chatbee/features/connections/controllers/pending_requests_controller.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
+import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 
@@ -194,6 +195,10 @@ class _FriendsTab extends ConsumerWidget {
                     final room = await ref
                         .read(chatRepoProvider)
                         .getOrCreateDirectRoom(friendUserId);
+                    
+                    // Add room to chat list so ChatScreen can find it
+                    ref.read(chatListControllerProvider.notifier).upsertRoom(room);
+                    
                     if (context.mounted) {
                       context.push('/chat/${room.id}');
                     }

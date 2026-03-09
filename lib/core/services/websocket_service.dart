@@ -21,7 +21,9 @@ enum WsEventType {
   typingStop,
   userOnline,
   userOffline,
-  roomUpdated;
+  roomUpdated,
+  profileUpdated,
+  presenceSync;
 
   static WsEventType? fromString(String? value) {
     switch (value) {
@@ -47,6 +49,10 @@ enum WsEventType {
         return WsEventType.userOffline;
       case 'room_updated':
         return WsEventType.roomUpdated;
+      case 'profile_updated':
+        return WsEventType.profileUpdated;
+      case 'presence_sync':
+        return WsEventType.presenceSync;
       default:
         return null;
     }
@@ -76,6 +82,10 @@ enum WsEventType {
         return 'user_offline';
       case WsEventType.roomUpdated:
         return 'room_updated';
+      case WsEventType.profileUpdated:
+        return 'profile_updated';
+      case WsEventType.presenceSync:
+        return 'presence_sync';
     }
   }
 }
@@ -115,12 +125,13 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final _eventController = StreamController<WsEvent>.broadcast();
   Timer? _reconnectTimer;
-  Timer? _pingTimer;
   String? _token;
   bool _isConnected = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
-  static const Duration _pingInterval = Duration(seconds: 30);
+  Timer? _presenceSyncTimer;
+  Completer<bool>? _connectCompleter;
+  bool _intentionalDisconnect = false;
 
   /// Stream of parsed WebSocket events.
   Stream<WsEvent> get events => _eventController.stream;
@@ -128,11 +139,53 @@ class WebSocketService {
   /// Whether the WebSocket is currently connected.
   bool get isConnected => _isConnected;
 
-  /// Connect to the WebSocket server.
+  /// Connect to WebSocket server.
   void connect(String token) {
     _token = token;
     _reconnectAttempts = 0;
+
+    // Don't connect if already connected
+    if (_isConnected) {
+      print('[WS] Already connected, skipping connect call');
+      return;
+    }
+
     _doConnect();
+  }
+
+  /// Connect only if not already connected (useful for app resume).
+  Future<bool> connectIfNeeded({
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    _intentionalDisconnect = false;
+
+    if (_isConnected && _channel != null) return true;
+    if (_token == null) return false;
+
+    // If already connecting, wait on existing completer
+    if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
+      try {
+        return await _connectCompleter!.future.timeout(
+          timeout,
+          onTimeout: () => false,
+        );
+      } catch (e) {
+        return false;
+      }
+    }
+
+    _reconnectAttempts = 0; // Reset counter for fresh reconnection attempt
+    _connectCompleter = Completer<bool>();
+    _doConnect();
+
+    try {
+      return await _connectCompleter!.future.timeout(
+        timeout,
+        onTimeout: () => false,
+      );
+    } catch (e) {
+      return false;
+    }
   }
 
   void _doConnect() {
@@ -149,23 +202,27 @@ class WebSocketService {
         (data) {
           if (!_isConnected) {
             _isConnected = true;
-            _startPingTimer();
+            _startPresenceSyncTimer();
             log('WebSocket connected', name: 'WS');
+            if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
+              _connectCompleter!.complete(true);
+            }
           }
           _reconnectAttempts = 0;
           _handleMessage(data);
         },
         onError: (error) {
           log('WebSocket error: $error', name: 'WS');
-          _isConnected = false;
-          _stopPingTimer();
-          _scheduleReconnect();
+          _handleDisconnect();
         },
         onDone: () {
-          log('WebSocket disconnected', name: 'WS');
-          _isConnected = false;
-          _stopPingTimer();
-          _scheduleReconnect();
+          final closeCode = _channel?.closeCode;
+          final closeReason = _channel?.closeReason;
+          log(
+            'WebSocket disconnected (code: $closeCode, reason: $closeReason)',
+            name: 'WS',
+          );
+          _handleDisconnect();
         },
       );
 
@@ -183,8 +240,21 @@ class WebSocketService {
     try {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
 
-      // Ignore pong responses from server
-      if (json['type'] == 'pong') return;
+      // Ignore pong and connected handshake responses from server
+      if (json['type'] == 'pong' || json['type'] == 'connected') return;
+
+      final eventType = WsEventType.fromString(json['type']);
+      if (eventType == WsEventType.presenceSync) {
+        final payload = json['payload'];
+        final event = WsEvent(
+          type: WsEventType.presenceSync,
+          roomId: '',
+          payload: payload is Map ? Map<String, dynamic>.from(payload) : {},
+        );
+        _eventController.add(event);
+        log('WS event received: presence_sync', name: 'WS');
+        return;
+      }
 
       final event = WsEvent.fromJson(json);
       _eventController.add(event);
@@ -197,30 +267,30 @@ class WebSocketService {
     }
   }
 
-  /// Start periodic ping to keep connection alive.
-  void _startPingTimer() {
-    _stopPingTimer();
-    _pingTimer = Timer.periodic(_pingInterval, (_) {
-      if (_isConnected && _channel != null) {
-        try {
-          _channel!.sink.add(jsonEncode({'type': 'ping'}));
-        } catch (e) {
-          log('Ping failed: $e', name: 'WS');
-          _isConnected = false;
-          _stopPingTimer();
-          _scheduleReconnect();
-        }
+  /// Start periodic presence sync every 60s
+  void _startPresenceSyncTimer() {
+    _presenceSyncTimer?.cancel();
+    _presenceSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_isConnected) {
+        requestPresenceSync();
       }
     });
   }
 
-  /// Stop the ping timer.
-  void _stopPingTimer() {
-    _pingTimer?.cancel();
-    _pingTimer = null;
+  void _handleDisconnect() {
+    _isConnected = false;
+    _presenceSyncTimer?.cancel();
+    if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
+      _connectCompleter!.complete(false);
+    }
+    if (!_intentionalDisconnect) {
+      _scheduleReconnect();
+    }
   }
 
   void _scheduleReconnect() {
+    if (_intentionalDisconnect) return;
+
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       log('Max reconnect attempts reached', name: 'WS');
       return;
@@ -242,9 +312,14 @@ class WebSocketService {
     if (_channel != null && _isConnected) {
       try {
         _channel!.sink.add(jsonEncode(message));
+        print('[WS] Message sent: ${message['type']}');
       } catch (e) {
         log('WS send error: $e', name: 'WS');
       }
+    } else {
+      print(
+        '[WS] Cannot send message ${message['type']}: not connected (channel: ${_channel != null}, connected: $_isConnected)',
+      );
     }
   }
 
@@ -258,9 +333,25 @@ class WebSocketService {
     send({'type': 'typing_stop', 'roomId': roomId});
   }
 
+  /// Send presence status update (online/offline).
+  void sendPresenceStatus(bool isOnline) {
+    print(
+      '[WS] Sending presence status: ${isOnline ? 'online' : 'offline'}, connected: $_isConnected',
+    );
+    send({
+      'type': 'presence_status',
+      'payload': {'isOnline': isOnline},
+    });
+  }
+
+  /// Request a full presence sync from the server
+  void requestPresenceSync() {
+    send({'type': 'sync_presence', 'payload': {}});
+  }
+
   /// Close the WebSocket channel without resetting token.
   void _closeChannel() {
-    _stopPingTimer();
+    _presenceSyncTimer?.cancel();
     _reconnectTimer?.cancel();
     try {
       _channel?.sink.close();
@@ -269,10 +360,11 @@ class WebSocketService {
     _isConnected = false;
   }
 
-  /// Disconnect and clean up.
+  /// Disconnect but keep token for reconnection.
   void disconnect() {
+    _intentionalDisconnect = true;
     _closeChannel();
-    _token = null;
+    // Don't clear _token so we can reconnect on app resume
   }
 
   /// Dispose all resources.

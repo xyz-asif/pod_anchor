@@ -11,6 +11,9 @@ import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 
 part 'ws_event_handler.g.dart';
 
+/// Provider to track the currently visibly open room (used to suppress unread ticks)
+final currentOpenRoomProvider = StateProvider<String?>((ref) => null);
+
 /// Listens to WebSocket events and dispatches them to the correct controllers.
 ///
 /// This is a keepAlive provider that starts listening when first read.
@@ -51,9 +54,15 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
       case WsEventType.roomUpdated:
         _handleRoomUpdated(ref, event);
         break;
+      case WsEventType.profileUpdated:
+        _handleProfileUpdated(ref, event);
+        break;
       case WsEventType.typingStart:
       case WsEventType.typingStop:
         _handleTyping(ref, event);
+        break;
+      case WsEventType.presenceSync:
+        _handlePresenceSync(ref, event);
         break;
     }
   });
@@ -67,12 +76,15 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
 }
 
 void _handleNewMessage(Ref ref, WsEvent event) {
+  print('[WS] _handleNewMessage called for room ${event.roomId}');
   try {
     final message = MessageResponse.fromJson(event.payload);
+    print('[WS] Message from: ${message.senderId}, my ID: ${ref.read(authControllerProvider).valueOrNull?.id}');
 
     // If I sent this message, ignore it (already handled optimistically + REST)
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
     if (currentUserId != null && message.senderId == currentUserId) {
+      print('[WS] Message is from self, ignoring');
       return;
     }
 
@@ -85,16 +97,29 @@ void _handleNewMessage(Ref ref, WsEvent event) {
       // Room not currently open — that's fine
     }
 
-    // Update chat list: move room to top, increment unread
     // Use media-aware preview instead of raw content/URL
     final preview = message.isMedia
         ? message.messageType.previewText(message.metadata?.fileName)
         : message.content;
-    ref
-        .read(chatListControllerProvider.notifier)
-        .moveRoomToTop(event.roomId, lastMessage: preview);
-  } catch (e) {
-    log('Error handling new message: $e', name: 'WS');
+
+    // Check if user is currently viewing this room
+    final currentRoomId = ref.read(currentOpenRoomProvider);
+    print('[WS] _handleNewMessage: room=${event.roomId}, currentOpenRoom=$currentRoomId');
+    if (event.roomId == currentRoomId) {
+      // Don't increment unread, just update the preview
+      print('[WS] User viewing room, updating preview only');
+      ref
+          .read(chatListControllerProvider.notifier)
+          .updateLastMessage(event.roomId, lastMessage: preview);
+    } else {
+      // Update chat list: move room to top, increment unread
+      print('[WS] User NOT viewing room, incrementing unread');
+      ref
+          .read(chatListControllerProvider.notifier)
+          .moveRoomToTop(event.roomId, lastMessage: preview);
+    }
+  } catch (e, st) {
+    log('Error handling new message: $e, stack: $st', name: 'WS');
   }
 }
 
@@ -112,7 +137,10 @@ void _handleStatusChanged(Ref ref, WsEvent event) {
           .updateMessageStatus(messageId, status);
       log('Status updated for message $messageId: $status', name: 'WS');
     } else {
-      log('Message controller not found for room ${event.roomId}, status update queued', name: 'WS');
+      log(
+        'Message controller not found for room ${event.roomId}, status update queued',
+        name: 'WS',
+      );
     }
   } catch (e) {
     log('Error handling status changed: $e', name: 'WS');
@@ -130,9 +158,15 @@ void _handleRoomRead(Ref ref, WsEvent event) {
       ref
           .read(messageControllerProvider(event.roomId).notifier)
           .markAllAsRead(readBy);
-      log('Marked all messages as read by $readBy in room ${event.roomId}', name: 'WS');
+      log(
+        'Marked all messages as read by $readBy in room ${event.roomId}',
+        name: 'WS',
+      );
     } else {
-      log('Message controller not found for room ${event.roomId}, room read queued', name: 'WS');
+      log(
+        'Message controller not found for room ${event.roomId}, room read queued',
+        name: 'WS',
+      );
     }
   } catch (e) {
     log('Error handling room read: $e', name: 'WS');
@@ -173,6 +207,19 @@ void _handleReactionUpdated(Ref ref, WsEvent event) {
         .read(messageControllerProvider(event.roomId).notifier)
         .updateReaction(messageId, userId, emoji);
   } catch (_) {}
+}
+
+void _handlePresenceSync(Ref ref, WsEvent event) {
+  try {
+    final chatListNotifier = ref.read(chatListControllerProvider.notifier);
+    for (final entry in event.payload.entries) {
+      final userId = entry.key;
+      final isOnline = entry.value == true;
+      chatListNotifier.updatePresence(userId, isOnline: isOnline);
+    }
+  } catch (e) {
+    log('Error handling presence_sync: $e', name: 'WS');
+  }
 }
 
 void _handleUserOnline(Ref ref, WsEvent event, bool isOnline) {
@@ -219,6 +266,34 @@ void _handleTyping(Ref ref, WsEvent event) {
         .read(typingControllerProvider(event.roomId).notifier)
         .handleRemoteTyping(userId, event.type == WsEventType.typingStart);
   } catch (_) {}
+}
+
+/// Handle profile_updated event - update user info across all rooms
+void _handleProfileUpdated(Ref ref, WsEvent event) {
+  final userId = event.payload['userId'] as String?;
+  final displayName = event.payload['displayName'] as String?;
+  final photoURL = event.payload['photoURL'] as String?;
+  final bio = event.payload['bio'] as String?;
+
+  if (userId == null) return;
+
+  try {
+    // Update user info in chat list
+    ref
+        .read(chatListControllerProvider.notifier)
+        .updateUserProfile(
+          userId: userId,
+          displayName: displayName,
+          photoURL: photoURL,
+          bio: bio,
+        );
+    log(
+      'Updated profile for user $userId: name=$displayName, photo=$photoURL',
+      name: 'WS',
+    );
+  } catch (e) {
+    log('Error handling profile update: $e', name: 'WS');
+  }
 }
 
 /// Typing state for a specific room.

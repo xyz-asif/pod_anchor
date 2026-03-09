@@ -67,6 +67,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    // Clear currentOpenRoom after frame completes (navigation has happened)
+    // This avoids the "ref invalid after dispose" error
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        ref.read(currentOpenRoomProvider.notifier).state = null;
+      } catch (_) {}
+    });
+
     // Cancel recording - wrap in try-catch since ref may be disposed
     try {
       ref

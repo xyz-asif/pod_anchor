@@ -226,11 +226,6 @@ class ChatListScreen extends ConsumerWidget {
                       ref
                           .read(chatListControllerProvider.notifier)
                           .clearUnreadCount(room.id);
-
-                      // Also refresh the list to grab the absolute latest state
-                      ref
-                          .read(chatListControllerProvider.notifier)
-                          .backgroundRefresh();
                     }
                   },
                 );

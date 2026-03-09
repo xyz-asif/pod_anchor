@@ -1,6 +1,8 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/core/network/api_client.dart';
 
 part 'chat_list_controller.g.dart';
 
@@ -19,7 +21,25 @@ class ChatListController extends _$ChatListController {
   FutureOr<List<RoomResponse>> build() async {
     // Track disposal
     ref.onDispose(() => _isDisposed = true);
-    
+
+    // Wait for auth to be ready before loading
+    // This prevents race condition where we try to load before token is set
+    final authState = await ref.watch(authControllerProvider.future);
+    if (authState == null) {
+      // Not authenticated yet, return empty list
+      // Will auto-rebuild when auth state changes
+      return [];
+    }
+
+    // Extra check: wait for API client to actually have the token
+    // This handles the race condition where auth state updates before token is set
+    final apiClient = ref.read(apiClientProvider);
+    if (!apiClient.hasToken) {
+      // Token not ready yet, return empty and wait for rebuild
+      print('⏳ ChatListController: Token not ready, waiting...');
+      return [];
+    }
+
     final rooms = await ref.read(chatRepoProvider).getRooms();
     return _sortByLastUpdated(rooms);
   }
@@ -61,14 +81,15 @@ class ChatListController extends _$ChatListController {
   }
 
   /// Move a room to the top when a new message arrives (via WebSocket).
+  /// Uses background refresh if room not found to avoid loading spinner.
   void moveRoomToTop(String roomId, {String? lastMessage, String? senderName}) {
     final rooms = state.valueOrNull;
     if (rooms == null) return;
 
     final index = rooms.indexWhere((r) => r.id == roomId);
     if (index < 0) {
-      // Room not in list — refresh to get it
-      refresh();
+      // Room not in list — do background refresh to get it gracefully
+      backgroundRefresh();
       return;
     }
 
@@ -104,7 +125,36 @@ class ChatListController extends _$ChatListController {
     );
   }
 
+  /// Update user profile info (displayName, photoURL, bio) across all rooms.
+  /// Called when receiving profile_updated WebSocket event.
+  void updateUserProfile({
+    required String userId,
+    String? displayName,
+    String? photoURL,
+    String? bio,
+  }) {
+    final rooms = state.valueOrNull;
+    if (rooms == null) return;
+
+    state = AsyncValue.data(
+      rooms.map((r) {
+        final participants = r.participants.map((p) {
+          if (p.id == userId) {
+            return p.copyWith(
+              displayName: displayName ?? p.displayName,
+              photoURL: photoURL ?? p.photoURL,
+              bio: bio ?? p.bio,
+            );
+          }
+          return p;
+        }).toList();
+        return r.copyWith(participants: participants);
+      }).toList(),
+    );
+  }
+
   /// Handle a room_updated event from WebSocket.
+  /// Uses background refresh if room not found to avoid loading spinner.
   void handleRoomUpdated({
     required String roomId,
     required String lastMessage,
@@ -116,7 +166,7 @@ class ChatListController extends _$ChatListController {
 
     final index = rooms.indexWhere((r) => r.id == roomId);
     if (index < 0) {
-      refresh(); // Room not found, need full fetch
+      backgroundRefresh(); // Room not found, refresh gracefully
       return;
     }
 

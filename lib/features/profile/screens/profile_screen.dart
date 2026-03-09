@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/profile/controllers/profile_controller.dart';
+import 'package:chatbee/core/services/cloudinary_service.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/shared/widgets/app_button.dart';
 import 'package:chatbee/shared/widgets/app_text_field.dart';
@@ -23,15 +25,65 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isEditing = false;
+  bool _isUploadingImage = false;
   final _nameController = TextEditingController();
   final _bioController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
 
   @override
   void dispose() {
     _nameController.dispose();
     _bioController.dispose();
     super.dispose();
+  }
+
+  /// Pick image from gallery and upload to Cloudinary
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() => _isUploadingImage = true);
+
+      // Upload to Cloudinary
+      final cloudinaryService = ref.read(cloudinaryServiceProvider);
+      final result = await cloudinaryService.upload(
+        filePath: pickedFile.path,
+        folder: 'profile_photos',
+      );
+
+      // Update profile with new photo URL
+      await ref
+          .read(profileControllerProvider.notifier)
+          .updateProfile(photoURL: result.secureUrl);
+
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Profile photo updated',
+          type: SnackbarType.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Failed to upload image: $e',
+          type: SnackbarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
   }
 
   void _startEditing() {
@@ -102,20 +154,69 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 children: [
                   SizedBox(height: 16.h),
 
-                  // Avatar
-                  CircleAvatar(
-                    radius: 50.r,
-                    backgroundColor: AppTheme.primaryLight,
-                    backgroundImage: user?.photoURL != null
-                        ? CachedNetworkImageProvider(user!.photoURL!)
-                        : null,
-                    child: user?.photoURL == null
-                        ? Icon(
-                            Icons.person_rounded,
-                            size: 48.r,
-                            color: AppTheme.primaryColor,
-                          )
-                        : null,
+                  // Avatar with edit button
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: _isUploadingImage ? null : _pickAndUploadImage,
+                        child: CircleAvatar(
+                          radius: 50.r,
+                          backgroundColor: AppTheme.primaryLight,
+                          backgroundImage: user?.photoURL != null
+                              ? CachedNetworkImageProvider(user!.photoURL!)
+                              : null,
+                          child: user?.photoURL == null
+                              ? Icon(
+                                  Icons.person_rounded,
+                                  size: 48.r,
+                                  color: AppTheme.primaryColor,
+                                )
+                              : null,
+                        ),
+                      ),
+                      // Upload progress indicator
+                      if (_isUploadingImage)
+                        Container(
+                          width: 100.r,
+                          height: 100.r,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        )
+                      else
+                        // Edit button overlay
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _pickAndUploadImage,
+                            child: Container(
+                              padding: EdgeInsets.all(8.r),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.camera_alt_rounded,
+                                size: 20.r,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   SizedBox(height: 16.h),
 
