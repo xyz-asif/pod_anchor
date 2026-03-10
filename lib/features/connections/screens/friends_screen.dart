@@ -9,6 +9,8 @@ import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
+import 'package:chatbee/shared/widgets/friend_shimmer.dart';
+import 'package:chatbee/shared/widgets/friend_action_button.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 
 /// Friends screen with two tabs: Friends list and Pending requests.
@@ -48,15 +50,33 @@ class FriendsScreen extends ConsumerWidget {
 }
 
 /// Tab showing accepted friends with real names, photos and last message.
-class _FriendsTab extends ConsumerWidget {
+class _FriendsTab extends ConsumerStatefulWidget {
   const _FriendsTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FriendsTab> createState() => _FriendsTabState();
+}
+
+class _FriendsTabState extends ConsumerState<_FriendsTab> {
+  @override
+  void initState() {
+    super.initState();
+    // Load fresh data every time the tab is visited
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(friendsControllerProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final friendsState = ref.watch(friendsControllerProvider);
 
     return friendsState.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => ListView.builder(
+        itemCount: 5,
+        padding: EdgeInsets.symmetric(vertical: 8.h),
+        itemBuilder: (_, __) => const FriendShimmer(),
+      ),
       error: (e, _) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -222,11 +242,25 @@ class _FriendsTab extends ConsumerWidget {
 }
 
 /// Tab showing pending friend requests received.
-class _PendingRequestsTab extends ConsumerWidget {
+class _PendingRequestsTab extends ConsumerStatefulWidget {
   const _PendingRequestsTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PendingRequestsTab> createState() => _PendingRequestsTabState();
+}
+
+class _PendingRequestsTabState extends ConsumerState<_PendingRequestsTab> {
+  @override
+  void initState() {
+    super.initState();
+    // Load fresh data every time the tab is visited
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pendingRequestsControllerProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final pendingState = ref.watch(pendingRequestsControllerProvider);
 
     // Side effects for accept/reject errors
@@ -241,7 +275,11 @@ class _PendingRequestsTab extends ConsumerWidget {
     });
 
     return pendingState.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => ListView.builder(
+        itemCount: 5,
+        padding: EdgeInsets.symmetric(vertical: 8.h),
+        itemBuilder: (_, __) => const PendingRequestShimmer(),
+      ),
       error: (e, _) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -337,36 +375,30 @@ class _PendingRequestsTab extends ConsumerWidget {
                     ),
                   ),
                   trailing: isProcessing
-                      ? SizedBox(
-                          width: 24.r,
-                          height: 24.r,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
+                      ? FriendActionButton(
+                          icon: Icons.hourglass_empty,
+                          color: Colors.grey,
+                          onPressed: () {}, // Empty callback when loading
+                          isLoading: true,
                         )
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             // Accept
-                            IconButton(
-                              icon: Icon(
-                                Icons.check_circle_rounded,
-                                color: Colors.green,
-                                size: 28.r,
-                              ),
+                            FriendActionButton(
+                              icon: Icons.check_rounded,
+                              color: Colors.green,
                               onPressed: () => ref
                                   .read(
                                     pendingRequestsControllerProvider.notifier,
                                   )
                                   .accept(request.id),
                             ),
+                            SizedBox(width: 8.w),
                             // Reject
-                            IconButton(
-                              icon: Icon(
-                                Icons.cancel_rounded,
-                                color: Colors.red.shade300,
-                                size: 28.r,
-                              ),
+                            FriendActionButton(
+                              icon: Icons.close_rounded,
+                              color: Colors.red.shade400,
                               onPressed: () => ref
                                   .read(
                                     pendingRequestsControllerProvider.notifier,

@@ -59,6 +59,9 @@ dependencies:
 
   # Image caching
   cached_network_image:
+  
+  # Shimmer loading effects
+  shimmer: ^3.0.0
 
   # Utilities
   intl:

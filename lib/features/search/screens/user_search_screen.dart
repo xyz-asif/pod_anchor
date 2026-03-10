@@ -7,6 +7,8 @@ import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/search/controllers/user_search_controller.dart';
 import 'package:chatbee/features/search/models/user_search_model.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
+import 'package:chatbee/shared/widgets/friend_shimmer.dart';
+import 'package:chatbee/shared/widgets/friend_action_button.dart';
 
 /// User search screen with connection status and actions
 class UserSearchScreen extends ConsumerStatefulWidget {
@@ -31,7 +33,7 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    // Initial search to show all users
+    // Initial search to show all users and refresh data on every visit
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(userSearchControllerProvider.notifier).search('');
       if (mounted) {
@@ -162,7 +164,11 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
           // Results List
           Expanded(
             child: state.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => ListView.builder(
+                itemCount: 5,
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                itemBuilder: (_, __) => const FriendShimmer(),
+              ),
               error: (e, _) => _buildEmptyState('Something went wrong'),
               data: (searchState) {
                 if (searchState.users.isEmpty) {
@@ -173,34 +179,41 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
                   );
                 }
 
-                return AnimatedBuilder(
-                  animation: _listAnimationController,
-                  builder: (context, child) {
-                    return ListView.builder(
-                      controller: _scrollController,
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      itemCount: searchState.users.length +
-                          (searchState.isLoadingMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == searchState.users.length) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        }
-
-                        final user = searchState.users[index];
-                        return _UserListTile(
-                          user: user,
-                          onAction: (action) => _handleAction(user, action),
-                          animation: _listAnimationController,
-                          index: index,
-                        );
-                      },
-                    );
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    await ref.read(userSearchControllerProvider.notifier).search(_searchController.text);
+                    _listAnimationController.reset();
+                    _listAnimationController.forward();
                   },
+                  child: AnimatedBuilder(
+                    animation: _listAnimationController,
+                    builder: (context, child) {
+                      return ListView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.symmetric(horizontal: 16.w),
+                        itemCount: searchState.users.length +
+                            (searchState.isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index == searchState.users.length) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          final user = searchState.users[index];
+                          return _UserListTile(
+                            user: user,
+                            onAction: (action) => _handleAction(user, action),
+                            animation: _listAnimationController,
+                            index: index,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 );
               },
             ),
@@ -535,160 +548,53 @@ class _UserListTile extends StatelessWidget {
     switch (user.connectionStatus) {
       case 'none':
       case 'rejected':
-        return _ActionButton(
-          label: 'Add',
+        return FriendActionButton(
           icon: Icons.person_add_rounded,
           color: AppTheme.primaryColor,
-          onTap: () => onAction(ConnectionAction.addFriend),
+          onPressed: () => onAction(ConnectionAction.addFriend),
         );
 
       case 'pending_sent':
-        return _ActionButton(
-          label: 'Cancel',
+        return FriendActionButton(
           icon: Icons.close_rounded,
           color: AppTheme.textLightColor,
-          onTap: () => onAction(ConnectionAction.cancel),
+          onPressed: () => onAction(ConnectionAction.cancel),
         );
 
       case 'pending_received':
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _IconButton(
+            FriendActionButton(
               icon: Icons.check_rounded,
               color: Colors.green,
-              onTap: () => onAction(ConnectionAction.accept),
+              onPressed: () => onAction(ConnectionAction.accept),
             ),
             SizedBox(width: 8.w),
-            _IconButton(
+            FriendActionButton(
               icon: Icons.close_rounded,
-              color: Colors.red,
-              onTap: () => onAction(ConnectionAction.reject),
+              color: Colors.red.shade400,
+              onPressed: () => onAction(ConnectionAction.reject),
             ),
           ],
         );
 
       case 'accepted':
-        return _ActionButton(
-          label: 'Unfriend',
+        return FriendActionButton(
           icon: Icons.person_remove_rounded,
           color: Colors.red.withValues(alpha: 0.8),
-          onTap: () => onAction(ConnectionAction.unfriend),
+          onPressed: () => onAction(ConnectionAction.unfriend),
         );
 
       case 'blocked':
-        return _ActionButton(
-          label: 'Blocked',
+        return FriendActionButton(
           icon: Icons.block_rounded,
           color: Colors.grey,
-          onTap: null,
+          onPressed: () {}, // Empty callback when blocked
         );
 
       default:
         return const SizedBox.shrink();
     }
-  }
-}
-
-/// Full action button with label - Elegant Glassmorphism Style
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              color.withValues(alpha: 0.15),
-              color.withValues(alpha: 0.05),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(10.r),
-          border: Border.all(
-            color: color.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 14.r,
-              color: color,
-            ),
-            SizedBox(width: 4.w),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w600,
-                color: color,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Icon-only button - Elegant Glassmorphism Style
-class _IconButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _IconButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all(6.r),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              color.withValues(alpha: 0.2),
-              color.withValues(alpha: 0.1),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(8.r),
-          border: Border.all(
-            color: color.withValues(alpha: 0.4),
-            width: 1,
-          ),
-        ),
-        child: Icon(
-          icon,
-          size: 18.r,
-          color: color,
-        ),
-      ),
-    );
   }
 }
