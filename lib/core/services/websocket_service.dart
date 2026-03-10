@@ -23,7 +23,8 @@ enum WsEventType {
   userOffline,
   roomUpdated,
   profileUpdated,
-  presenceSync;
+  presenceSync,
+  connectionAccepted;
 
   static WsEventType? fromString(String? value) {
     switch (value) {
@@ -53,6 +54,8 @@ enum WsEventType {
         return WsEventType.profileUpdated;
       case 'presence_sync':
         return WsEventType.presenceSync;
+      case 'connection_accepted':
+        return WsEventType.connectionAccepted;
       default:
         return null;
     }
@@ -86,6 +89,8 @@ enum WsEventType {
         return 'profile_updated';
       case WsEventType.presenceSync:
         return 'presence_sync';
+      case WsEventType.connectionAccepted:
+        return 'connection_accepted';
     }
   }
 }
@@ -125,6 +130,7 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final _eventController = StreamController<WsEvent>.broadcast();
   Timer? _reconnectTimer;
+  Timer? _pingTimer;
   String? _token;
   bool _isConnected = false;
   int _reconnectAttempts = 0;
@@ -203,6 +209,7 @@ class WebSocketService {
           if (!_isConnected) {
             _isConnected = true;
             _startPresenceSyncTimer();
+            _startPingTimer();
             log('WebSocket connected', name: 'WS');
             if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
               _connectCompleter!.complete(true);
@@ -218,8 +225,9 @@ class WebSocketService {
         onDone: () {
           final closeCode = _channel?.closeCode;
           final closeReason = _channel?.closeReason;
+          final reason = _getCloseReasonDescription(closeCode, closeReason);
           log(
-            'WebSocket disconnected (code: $closeCode, reason: $closeReason)',
+            'WebSocket disconnected (code: $closeCode, reason: $reason)',
             name: 'WS',
           );
           _handleDisconnect();
@@ -267,6 +275,17 @@ class WebSocketService {
     }
   }
 
+  /// Start periodic ping to keep connection alive (every 30s)
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_isConnected) {
+        send({'type': 'ping'});
+        log('WS ping sent', name: 'WS');
+      }
+    });
+  }
+
   /// Start periodic presence sync every 60s
   void _startPresenceSyncTimer() {
     _presenceSyncTimer?.cancel();
@@ -279,6 +298,7 @@ class WebSocketService {
 
   void _handleDisconnect() {
     _isConnected = false;
+    _pingTimer?.cancel();
     _presenceSyncTimer?.cancel();
     if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
       _connectCompleter!.complete(false);
@@ -305,6 +325,42 @@ class WebSocketService {
       name: 'WS',
     );
     _reconnectTimer = Timer(delay, _doConnect);
+  }
+
+  /// Get a descriptive message for WebSocket close codes.
+  String _getCloseReasonDescription(int? code, String? reason) {
+    // If server provided a reason, use it
+    if (reason != null && reason.isNotEmpty) {
+      return reason;
+    }
+
+    // Return descriptive message based on close code
+    switch (code) {
+      case 1000:
+        return 'normal closure';
+      case 1001:
+        return 'going away (server shutting down)';
+      case 1002:
+        return 'protocol error';
+      case 1003:
+        return 'unsupported data';
+      case 1005:
+        return 'no status received';
+      case 1006:
+        return 'abnormal closure (connection lost)';
+      case 1008:
+        return 'policy violation';
+      case 1009:
+        return 'message too big';
+      case 1010:
+        return 'mandatory extension missing';
+      case 1011:
+        return 'internal server error';
+      case 1015:
+        return 'TLS handshake failure';
+      default:
+        return 'unknown (code: $code)';
+    }
   }
 
   /// Send a raw JSON message over WebSocket.
@@ -353,6 +409,7 @@ class WebSocketService {
   void _closeChannel() {
     _presenceSyncTimer?.cancel();
     _reconnectTimer?.cancel();
+    _pingTimer?.cancel();
     try {
       _channel?.sink.close();
     } catch (_) {}

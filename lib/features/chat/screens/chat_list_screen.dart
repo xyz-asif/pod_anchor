@@ -7,6 +7,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
+import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 /// Chat list screen — shows all chat rooms sorted by recent activity.
 ///
@@ -101,133 +102,193 @@ class ChatListScreen extends ConsumerWidget {
                 final isOnline = otherParticipant.isOnline;
                 final hasUnread = room.unreadCount > 0;
 
-                return ListTile(
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 4.h,
+                return Dismissible(
+                  key: Key(room.id),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: EdgeInsets.only(right: 20.w),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Icon(
+                      Icons.delete_rounded,
+                      color: Colors.white,
+                      size: 28.r,
+                    ),
                   ),
-                  leading: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 26.r,
-                        backgroundColor: AppTheme.primaryLight,
-                        backgroundImage: otherParticipant.photoURL != null
-                            ? CachedNetworkImageProvider(
-                                otherParticipant.photoURL!,
-                              )
-                            : null,
-                        child: otherParticipant.photoURL == null
-                            ? Text(
-                                displayName[0].toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 18.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryColor,
+                  confirmDismiss: (direction) async {
+                    return await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text('Delete Chat?'),
+                            content: Text(
+                              'This will delete the chat and all messages. This action cannot be undone.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.red),
                                 ),
-                              )
-                            : null,
-                      ),
-                      // Online indicator
-                      if (isOnline)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            width: 14.r,
-                            height: 14.r,
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 2.r,
+                              ),
+                            ],
+                          ),
+                        ) ??
+                        false;
+                  },
+                  onDismissed: (direction) async {
+                    try {
+                      await ref
+                          .read(chatListControllerProvider.notifier)
+                          .deleteRoom(room.id);
+                      AppSnackbar.show(
+                        context,
+                        message: 'Chat deleted',
+                        type: SnackbarType.success,
+                      );
+                    } catch (e) {
+                      AppSnackbar.show(
+                        context,
+                        message: 'Failed to delete chat',
+                        type: SnackbarType.error,
+                      );
+                    }
+                  },
+                  child: ListTile(
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 4.h,
+                    ),
+                    leading: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 26.r,
+                          backgroundColor: AppTheme.primaryLight,
+                          backgroundImage: otherParticipant.photoURL != null
+                              ? CachedNetworkImageProvider(
+                                  otherParticipant.photoURL!,
+                                )
+                              : null,
+                          child: otherParticipant.photoURL == null
+                              ? Text(
+                                  displayName[0].toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 18.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        // Online indicator
+                        if (isOnline)
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 14.r,
+                              height: 14.r,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2.r,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  title: Text(
-                    displayName,
-                    style: TextStyle(
-                      fontSize: 15.sp,
-                      fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
-                      color: AppTheme.textDarkColor,
+                      ],
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    room.lastMessage ?? 'No messages yet',
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      color: hasUnread
-                          ? AppTheme.textDarkColor
-                          : AppTheme.textMediumColor,
-                      fontWeight: hasUnread
-                          ? FontWeight.w600
-                          : FontWeight.normal,
+                    title: Text(
+                      displayName,
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+                        color: AppTheme.textDarkColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // Time
-                      if (room.lastUpdated != null)
-                        Text(
-                          timeago.format(room.lastUpdated!, locale: 'en_short'),
-                          style: TextStyle(
-                            fontSize: 11.sp,
-                            color: hasUnread
-                                ? AppTheme.primaryColor
-                                : AppTheme.textLightColor,
-                          ),
-                        ),
-                      SizedBox(height: 4.h),
-                      // Unread badge
-                      if (hasUnread)
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6.w,
-                            vertical: 2.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            borderRadius: BorderRadius.circular(10.r),
-                          ),
-                          child: Text(
-                            room.unreadCount > 99
-                                ? '99+'
-                                : '${room.unreadCount}',
+                    subtitle: Text(
+                      room.lastMessage ?? 'No messages yet',
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: hasUnread
+                            ? AppTheme.textDarkColor
+                            : AppTheme.textMediumColor,
+                        fontWeight: hasUnread
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // Time
+                        if (room.lastUpdated != null)
+                          Text(
+                            timeago.format(room.lastUpdated!, locale: 'en_short'),
                             style: TextStyle(
                               fontSize: 11.sp,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                              color: hasUnread
+                                  ? AppTheme.primaryColor
+                                  : AppTheme.textLightColor,
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  onTap: () async {
-                    // Clear unread count optimistically when entering
-                    ref
-                        .read(chatListControllerProvider.notifier)
-                        .clearUnreadCount(room.id);
-
-                    // Wait for user to return from the chat screen
-                    await context.push('/chat/${room.id}');
-
-                    // When back on this screen, ensure unread count is zeroed out
-                    // (in case messages arrived while they were reading)
-                    if (context.mounted) {
+                        SizedBox(height: 4.h),
+                        // Unread badge
+                        if (hasUnread)
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6.w,
+                              vertical: 2.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                            child: Text(
+                              room.unreadCount > 99
+                                  ? '99+'
+                                  : '${room.unreadCount}',
+                              style: TextStyle(
+                                fontSize: 11.sp,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    onTap: () async {
+                      // Clear unread count optimistically when entering
                       ref
                           .read(chatListControllerProvider.notifier)
                           .clearUnreadCount(room.id);
-                    }
-                  },
+
+                      // Wait for user to return from the chat screen
+                      await context.push('/chat/${room.id}');
+
+                      // When back on this screen, ensure unread count is zeroed out
+                      // (in case messages arrived while they were reading)
+                      if (context.mounted) {
+                        ref
+                            .read(chatListControllerProvider.notifier)
+                            .clearUnreadCount(room.id);
+                      }
+                    },
+                  ),
                 );
               },
             ),

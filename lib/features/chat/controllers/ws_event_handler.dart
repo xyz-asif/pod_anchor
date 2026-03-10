@@ -7,6 +7,7 @@ import 'package:chatbee/core/services/websocket_service.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/chat/controllers/message_controller.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
+import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 
 part 'ws_event_handler.g.dart';
@@ -63,6 +64,9 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
         break;
       case WsEventType.presenceSync:
         _handlePresenceSync(ref, event);
+        break;
+      case WsEventType.connectionAccepted:
+        _handleConnectionAccepted(ref, event);
         break;
     }
   });
@@ -324,5 +328,44 @@ class TypingController extends _$TypingController {
   /// Send typing_stop via WebSocket.
   void stopTyping() {
     ref.read(webSocketServiceProvider).sendTypingStop(roomId);
+  }
+}
+
+/// Handle connection_accepted event - add new room when friend request is accepted
+void _handleConnectionAccepted(Ref ref, WsEvent event) {
+  try {
+    final payload = event.payload;
+    final roomData = payload['room'] as Map<String, dynamic>?;
+    
+    if (roomData == null) {
+      log('connection_accepted: No room data in payload', name: 'WS');
+      return;
+    }
+
+    // Parse the room data
+    final room = RoomResponse.fromJson(roomData);
+    
+    // Add the room to the chat list
+    ref.read(chatListControllerProvider.notifier).upsertRoom(room);
+    
+    // Get the other user's ID for notification
+    final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
+    final senderId = payload['senderId'] as String?;
+    final receiverId = payload['receiverId'] as String?;
+    
+    if (currentUserId != null && senderId != null && receiverId != null) {
+      // Determine which user is the other person
+      final otherUserId = currentUserId == senderId ? receiverId : senderId;
+      
+      // Show notification (you might want to implement a notification service)
+      log('Connection accepted: New room ${room.id} added, other user: $otherUserId', name: 'WS');
+      
+      // TODO: Show notification to user
+      // Could use a notification service or update a global state for notifications
+    }
+    
+    log('Connection accepted: Room ${room.id} added to chat list', name: 'WS');
+  } catch (e, st) {
+    log('Error handling connection_accepted: $e, stack: $st', name: 'WS');
   }
 }

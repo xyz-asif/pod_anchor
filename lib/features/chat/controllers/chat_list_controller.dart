@@ -229,4 +229,13 @@ class ChatListController extends _$ChatListController {
       state = AsyncValue.data([room, ...rooms]);
     }
   }
+
+  /// Delete a chat room.
+  Future<void> deleteRoom(String roomId) async {
+    await ref.read(chatRepoProvider).deleteChat(roomId);
+    final rooms = state.valueOrNull ?? [];
+    state = AsyncValue.data(
+      rooms.where((r) => r.id != roomId).toList(),
+    );
+  }
 }

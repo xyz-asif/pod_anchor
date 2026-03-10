@@ -12,6 +12,7 @@ class ApiEndpoints {
   // ── Users ──
   static const String usersMe = '/users/me';
   static const String usersSearch = '/users/search';
+  static const String usersSearchWithStatus = '/users/search-with-status';
 
   // ── Connections (Friends) ──
   static const String connectionRequest = '/connections/request';
@@ -21,8 +22,14 @@ class ApiEndpoints {
   /// Use: '/connections/$id/accept'
   static String connectionAccept(String id) => '/connections/$id/accept';
 
+  /// Use: '/connections/$id/cancel'
+  static String connectionCancel(String id) => '/connections/$id/cancel';
+
   /// Use: '/connections/$id/reject'
   static String connectionReject(String id) => '/connections/$id/reject';
+
+  /// Use: '/connections/$id' (delete/unfriend)
+  static String connectionDelete(String id) => '/connections/$id';
 
   // ── Chat Rooms ──
   static const String chatRooms = '/chat/rooms';
@@ -36,6 +43,9 @@ class ApiEndpoints {
 
   /// Use: '/chat/rooms/$roomId/read'
   static String chatRoomRead(String roomId) => '/chat/rooms/$roomId/read';
+
+  /// Use: '/chat/rooms/$roomId' (delete chat)
+  static String chatRoomDelete(String roomId) => '/chat/rooms/$roomId';
 
   // ── Messages ──
   /// Use: '/chat/messages/$messageId/status'
