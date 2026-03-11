@@ -63,6 +63,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
     });
 
+    // Force refresh messages when screen opens to handle backgrounding scenarios
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Invalidate the message controller to force a fresh fetch
+      ref.invalidate(messageControllerProvider(widget.roomId));
+    });
+
     _scrollController.addListener(_onScroll);
   }
 
