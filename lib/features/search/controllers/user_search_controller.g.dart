@@ -7,7 +7,7 @@ part of 'user_search_controller.dart';
 // **************************************************************************
 
 String _$userSearchControllerHash() =>
-    r'88f81436dbcb6f587ad147db039ee309f124fcd2';
+    r'7a2145c346381f05a8c7f4015a85e7e4cf35e26f';
 
 /// State for user search with pagination
 ///

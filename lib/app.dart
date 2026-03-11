@@ -7,7 +7,7 @@ import 'package:chatbee/core/services/websocket_service.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/connections/controllers/friends_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
-import 'package:chatbee/features/notifications/controllers/notification_controller.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
@@ -30,60 +30,68 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!mounted) return;
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (!mounted) return;
+  print('[Lifecycle] → $state');
 
-    print('[AppLifecycle] State changed to: $state');
+  final wsService = ref.read(webSocketServiceProvider);
 
-    // Handle app lifecycle changes for WebSocket connection
-    final wsService = ref.read(webSocketServiceProvider);
+  switch (state) {
+    case AppLifecycleState.paused:
+    case AppLifecycleState.hidden: // iOS-specific background state
+      // App is genuinely in background — notify server and close socket.
+      // Note: detached is intentionally excluded (can fire spuriously on Android).
+      wsService.disconnectAndNotifyServer();
+      break;
 
-    switch (state) {
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
-        // App going to background or being terminated
-        // Call disconnect API to instantly notify server that user is offline
-        // This makes other users see us as offline within 1 second
-        wsService.disconnectAndNotifyServer();
-        break;
-      case AppLifecycleState.resumed:
-        // App coming back to foreground - reconnect WebSocket and refresh data
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted) return;
+    case AppLifecycleState.resumed:
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
 
-          // Reconnect WebSocket if not connected and wait for it
-          final connected = await wsService.connectIfNeeded(
-            timeout: const Duration(seconds: 8),
-          );
+        // ── Step 1: Refresh Firebase token ──────────────────────────────
+        // Firebase tokens expire after 1 hour. If app was backgrounded
+        // longer than that, stored token is stale and WS server will
+        // reject it — causing a permanent disconnect until app restarts.
+        final freshToken = await ref
+            .read(authControllerProvider.notifier)
+            .getAndRefreshToken();
 
-          if (!mounted) return;
+        if (!mounted) return;
 
-          if (connected) {
-            print(
-              '[AppLifecycle] WebSocket connected, sending presence updates',
-            );
-            wsService.sendPresenceStatus(true);
-            wsService.requestPresenceSync();
-          } else {
-            print(
-              '[AppLifecycle] WebSocket failed to connect in time, presence not sent',
-            );
-          }
+        // Inject fresh token before reconnecting
+        if (freshToken != null) {
+          wsService.updateToken(freshToken);
+        }
 
-          // Refresh chat list to get latest presence (online/offline status)
-          ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+        // ── Step 2: Reconnect WebSocket ──────────────────────────────────
+        final connected = await wsService.connectIfNeeded(
+          timeout: const Duration(seconds: 8),
+        );
 
-          // Refresh friends list to update online status
-          ref.read(friendsControllerProvider.notifier).refresh();
+        if (!mounted) return;
 
-          // Refresh notification badge count
-          ref.read(unreadNotificationCountProvider.notifier).refresh();
-        });
-        break;
-      default:
-        break;
-    }
+        if (connected) {
+          print('[Lifecycle] WS reconnected, syncing presence');
+          wsService.sendPresenceStatus(true);
+          wsService.requestPresenceSync();
+        } else {
+          print('[Lifecycle] WS reconnect failed (will retry via backoff)');
+          // The backoff timer in WebSocketService handles retries automatically.
+          // Also, connectivity_plus listener will trigger an instant retry
+          // once network is available again.
+        }
+
+        // ── Step 3: Refresh UI data ──────────────────────────────────────
+        // Background refresh is non-blocking and doesn't show a spinner.
+        ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+        ref.read(friendsControllerProvider.notifier).refresh();
+      });
+      break;
+
+    default:
+      break;
   }
+}
 
   @override
   Widget build(BuildContext context) {

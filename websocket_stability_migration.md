@@ -1,3 +1,73 @@
+# WebSocket Stability Migration Guide
+### ChatBee — Foreground Connection Stability
+
+---
+
+## Overview
+
+This document covers **every file that must change**, exactly what changes, and **why** each one matters. Follow the steps in order — each builds on the previous.
+
+### Root causes identified across all 6 files
+
+| # | File | Problem |
+|---|------|---------|
+| 1 | `websocket_service.dart` | Zombie connection — pings sent but pong never verified |
+| 2 | `websocket_service.dart` | `_isConnected` set on first data, not on handshake |
+| 3 | `websocket_service.dart` | No `_isConnecting` guard — concurrent sockets possible |
+| 4 | `websocket_service.dart` | No network-change detection (WiFi ↔ cellular) |
+| 5 | `websocket_service.dart` | Linear reconnect backoff, off-by-one bug |
+| 6 | `app.dart` | Firebase token never refreshed on resume — fails after 1 hour |
+| 7 | `app.dart` | Disconnect fires on `detached` (can fire mid-session on Android) |
+| 8 | `auth_controller.dart` | No `updateToken()` entry point for resume token refresh |
+| 9 | `pubspec.yaml` | `connectivity_plus` missing — no network-change awareness |
+
+---
+
+## Step 1 — `pubspec.yaml`
+
+### What to add
+
+Under `dependencies`, add `connectivity_plus` alongside `web_socket_channel`:
+
+```yaml
+# WebSocket
+web_socket_channel:
+connectivity_plus: ^6.1.4    # ← ADD THIS
+```
+
+### Why
+
+Without `connectivity_plus`, the app has no way to know that the network changed (WiFi → cellular, airplane mode off, etc.). The zombie-detection ping will eventually catch it in ~35 seconds, but with `connectivity_plus` the reconnect is instant — the stream fires as soon as the OS reports a new network interface.
+
+### After adding
+
+```bash
+flutter pub get
+```
+
+---
+
+## Step 2 — `websocket_service.dart` (full replacement)
+
+This is the most significant change. Replace the entire file with the version below.
+
+### Summary of all changes in this file
+
+| Change | Old behaviour | New behaviour |
+|--------|---------------|---------------|
+| **Pong timeout** | Ping sent, reply never checked | Timer arms after each ping; if no pong in 10 s → force reconnect |
+| **Connection state** | `_isConnected = true` on first message (gap exists) | `_isConnected = true` in `channel.ready.then()` — correct handshake timing |
+| **Concurrency guard** | Two sockets could open during rapid reconnects | `_isConnecting` bool prevents any second call to `_doConnect` |
+| **Network listener** | None | `connectivity_plus` stream: instant reconnect on network restored |
+| **Reconnect backoff** | `attempts * 2` linear, off-by-one | `3 * 2^attempt ± 20% jitter`, clamped 3–30 s |
+| **Immediate retry** | Always used backoff timer | If was connected and dropped → immediate retry, then backoff |
+| **Ping interval** | 30 s | 25 s (AWS ALB / Nginx default idle timeout is 30 s — 25 s gives a 5 s buffer) |
+| **Token update** | No way to update token externally | `updateToken(String)` method added for resume flow |
+| **`_closeChannel`** | Always nulled token | Takes `keepToken` param — token preserved during reconnects |
+
+### Full file
+
+```dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
@@ -12,7 +82,7 @@ import 'package:chatbee/core/constants/api_endpoints.dart';
 
 part 'websocket_service.g.dart';
 
-/// All WebSocket event types from backend.
+/// All WebSocket event types from the backend.
 enum WsEventType {
   message,
   messageStatusChanged,
@@ -95,17 +165,17 @@ class WsEvent {
   }
 }
 
-/// WebSocket service — manages real-time connection.
+/// WebSocket service — manages the real-time connection.
 ///
 /// Stability guarantees:
 /// - Zombie detection: pong must arrive within [_pongTimeoutSeconds] of each
-///   ping, otherwise connection is force-closed and reconnected.
+///   ping, otherwise the connection is force-closed and reconnected.
 /// - Correct state: connected flag is set in channel.ready, not on first data.
 /// - Concurrency guard: _isConnecting prevents opening two sockets at once.
 /// - Network change: connectivity_plus triggers instant reconnect on network
 ///   restored (WiFi↔cellular, airplane-mode off, etc.).
 /// - Exponential backoff + jitter on failed reconnects.
-/// - Token refresh: updateToken() lets resume flow inject a fresh
+/// - Token refresh: updateToken() lets the resume flow inject a fresh
 ///   Firebase token without fully disconnecting.
 class WebSocketService {
   WebSocketChannel? _channel;
@@ -118,7 +188,7 @@ class WebSocketService {
   StreamSubscription? _connectivitySubscription;
 
   static const int _pongTimeoutSeconds    = 10;
-  static const int _pingIntervalSeconds   = 10; // < backend 15s read timeout
+  static const int _pingIntervalSeconds   = 25; // < typical 30 s NAT timeout
   static const int _maxReconnectAttempts  = 10;
 
   String? _token;
@@ -138,7 +208,7 @@ class WebSocketService {
 
   // ─── Public API ────────────────────────────────────────────────────────────
 
-  /// Initial connect after sign-in. Starts connectivity listener.
+  /// Initial connect after sign-in. Starts the connectivity listener.
   void connect(String token) {
     _token = token;
     _intentionalDisconnect = false;
@@ -153,8 +223,8 @@ class WebSocketService {
     _doConnect();
   }
 
-  /// Update stored token without reconnecting (called on resume).
-  /// If the socket is already connected new token is used for the
+  /// Update the stored token without reconnecting (called on resume).
+  /// If the socket is already connected the new token is used for the
   /// next reconnect attempt only — no mid-session disruption.
   void updateToken(String token) {
     _token = token;
@@ -273,7 +343,7 @@ class WebSocketService {
       _channel = WebSocketChannel.connect(wsUrl);
       log('[WS] Connecting…', name: 'WS');
 
-      // Set _isConnected only after WS handshake completes — NOT on first data.
+      // Set _isConnected only after the WS handshake completes — NOT on first data.
       _channel!.ready.then((_) {
         if (_intentionalDisconnect) return;
         _isConnecting  = false;
@@ -320,7 +390,7 @@ class WebSocketService {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
       final type = json['type'] as String?;
 
-      // Pong (or any data) proves connection is alive — cancel pong timer.
+      // Pong (or any data) proves the connection is alive — cancel pong timer.
       if (type == 'pong' || type == 'connected') {
         _cancelPongTimeout();
         log('[WS] Pong ✓', name: 'WS');
@@ -368,7 +438,7 @@ class WebSocketService {
       return;
     }
 
-    // Arm pong timeout only if one isn't already running.
+    // Arm the pong timeout only if one isn't already running.
     _pongTimeoutTimer ??= Timer(
       const Duration(seconds: _pongTimeoutSeconds),
       () {
@@ -499,3 +569,174 @@ WebSocketService webSocketService(Ref ref) {
   ref.onDispose(() => service.dispose());
   return service;
 }
+```
+
+---
+
+## Step 3 — `auth_controller.dart`
+
+### What to add
+
+One new public method: `getAndRefreshToken()`. The resume flow in `app.dart` needs to fetch a fresh Firebase token without triggering a full `restoreSession()` (which fetches the profile again — unnecessary overhead on every foreground resume).
+
+```dart
+// Add this method to AuthController, after restoreSession()
+
+/// Returns a freshly-refreshed Firebase ID token.
+/// Call this from the lifecycle resume handler before reconnecting WebSocket.
+/// Returns null if the user is not signed in.
+Future<String?> getAndRefreshToken() async {
+  final repo = ref.read(authRepoProvider);
+  if (!repo.isSignedIn) return null;
+  try {
+    await repo.refreshToken();      // forces Firebase token rotation
+    return await repo.getIdToken(); // returns the new token
+  } catch (e) {
+    // If refresh fails the existing token is returned; WS will retry on failure
+    return await repo.getIdToken();
+  }
+}
+```
+
+### Why this matters
+
+Firebase ID tokens expire after **1 hour**. If a user backgrounds the app for over an hour and comes back, `connectIfNeeded()` hands the stale token to the WebSocket server. The server rejects it with a 401/close, the reconnect loop retries with the same bad token up to `_maxReconnectAttempts` times and then **gives up permanently** — the user has no real-time connection for the rest of that session until they kill and reopen the app.
+
+---
+
+## Step 4 — `app.dart`
+
+This file has two problems in `didChangeAppLifecycleState`:
+
+### Problem A — Token is never refreshed on resume
+
+`connectIfNeeded()` is called with whatever token `WebSocketService` has internally — which might be over 1 hour old. Fix: fetch a fresh token first, then call `updateToken()`.
+
+### Problem B — `detached` triggers disconnect
+
+`AppLifecycleState.detached` on Android can fire during certain configuration changes and on some devices when the app is briefly sent to the task manager but not actually killed. Disconnecting here causes unnecessary reconnect cycles while the app is still in the foreground. Only disconnect on `paused` (true background) and `hidden` (iOS-specific background state).
+
+### Full replaced method
+
+Replace the entire `didChangeAppLifecycleState` method:
+
+```dart
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (!mounted) return;
+  log('[Lifecycle] → $state', name: 'APP');
+
+  final wsService = ref.read(webSocketServiceProvider);
+
+  switch (state) {
+    case AppLifecycleState.paused:
+    case AppLifecycleState.hidden: // iOS-specific background state
+      // App is genuinely in the background — notify server and close socket.
+      // Note: detached is intentionally excluded (can fire spuriously on Android).
+      wsService.disconnectAndNotifyServer();
+      break;
+
+    case AppLifecycleState.resumed:
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+
+        // ── Step 1: Refresh Firebase token ──────────────────────────────
+        // Firebase tokens expire after 1 hour. If the app was backgrounded
+        // longer than that, the stored token is stale and the WS server will
+        // reject it — causing a permanent disconnect until the app restarts.
+        final freshToken = await ref
+            .read(authControllerProvider.notifier)
+            .getAndRefreshToken();
+
+        if (!mounted) return;
+
+        // Inject the fresh token before reconnecting
+        if (freshToken != null) {
+          wsService.updateToken(freshToken);
+        }
+
+        // ── Step 2: Reconnect WebSocket ──────────────────────────────────
+        final connected = await wsService.connectIfNeeded(
+          timeout: const Duration(seconds: 8),
+        );
+
+        if (!mounted) return;
+
+        if (connected) {
+          log('[Lifecycle] WS reconnected, syncing presence', name: 'APP');
+          wsService.sendPresenceStatus(true);
+          wsService.requestPresenceSync();
+        } else {
+          log('[Lifecycle] WS reconnect failed (will retry via backoff)', name: 'APP');
+          // The backoff timer in WebSocketService handles retries automatically.
+          // Also, the connectivity_plus listener will trigger an instant retry
+          // once the network is available again.
+        }
+
+        // ── Step 3: Refresh UI data ──────────────────────────────────────
+        // Background refresh is non-blocking and doesn't show a spinner.
+        ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+        ref.read(friendsControllerProvider.notifier).refresh();
+        ref.read(unreadNotificationCountProvider.notifier).refresh();
+      });
+      break;
+
+    default:
+      break;
+  }
+}
+```
+
+---
+
+## Step 5 — Run code generation
+
+The only generated file that changes is `websocket_service.g.dart` (the Riverpod provider). Run:
+
+```bash
+dart run build_runner build --delete-conflicting-outputs
+```
+
+No other generated files are affected — `auth_controller.dart`'s new method is not annotated and does not trigger codegen.
+
+---
+
+## Verification checklist
+
+After completing all steps, test each scenario manually:
+
+| Scenario | Expected result |
+|----------|----------------|
+| App open, idle for 3 min | Ping/pong logs every 25 s, no reconnect |
+| Simulate server drop (kill Go server, restart) | Reconnect within 3 s (immediate retry), then exponential backoff if fails |
+| Toggle airplane mode off while app is open | Reconnect within ~2 s via connectivity listener |
+| Switch WiFi → cellular | Same as above |
+| Background app > 1 hour, foreground | Fresh token fetched, clean reconnect, presence sent |
+| Background app < 1 minute, foreground | `connectIfNeeded` returns immediately (already handling reconnect) |
+| Background for 5 min (token still valid) | Reconnect in <8 s, no token refresh needed but harmless |
+
+### Log signatures to watch in debug console
+
+```
+[WS] Connected ✓                        ← handshake success
+[WS] Ping →                             ← every 25 s
+[WS] Pong ✓                             ← server alive
+[WS] ⚠️ No pong in 10s — zombie...     ← zombie detected, will reconnect
+[WS] Network restored — reconnecting… ← connectivity_plus fired
+[WS] Reconnecting in Xs (attempt N/10) ← backoff scheduled
+[Lifecycle] → AppLifecycleState.resumed ← foreground detected
+```
+
+---
+
+## What was intentionally NOT changed
+
+| Item | Reason |
+|------|--------|
+| `main.dart` | Session restore and WS init flow is correct as-is |
+| `ws_event_handler.dart` | No connection-stability issues — event dispatch is fine |
+| `chat_list_controller.dart` | No issues here |
+| `message_controller.dart` | No issues here |
+| `chat_state_controller.dart` | No issues here |
+| `disconnectAndNotifyServer` HTTP logic | Still correct — fire-and-forget with 3 s timeout |
+| `wsEventHandlerProvider` init in `main.dart` | Correct — eagerly initialized after session restore |

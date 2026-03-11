@@ -93,4 +93,19 @@ class AuthController extends _$AuthController {
       return user;
     });
   }
+
+  /// Returns a freshly-refreshed Firebase ID token.
+  /// Call this from lifecycle resume handler before reconnecting WebSocket.
+  /// Returns null if user is not signed in.
+  Future<String?> getAndRefreshToken() async {
+    final repo = ref.read(authRepoProvider);
+    if (!repo.isSignedIn) return null;
+    try {
+      await repo.refreshToken();      // forces Firebase token rotation
+      return await repo.getIdToken(); // returns new token
+    } catch (e) {
+      // If refresh fails, existing token is returned; WS will retry on failure
+      return await repo.getIdToken();
+    }
+  }
 }
