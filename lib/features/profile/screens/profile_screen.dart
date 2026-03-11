@@ -132,7 +132,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.w600)),
+        centerTitle: false,
         actions: [
           if (!_isEditing)
             IconButton(
@@ -257,13 +258,72 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                     SizedBox(height: 32.h),
 
+                    // Connections Section
+                    _buildSectionHeader('Connections'),
+                    _buildSettingsTile(
+                      icon: Icons.people_outline_rounded,
+                      title: 'Friends',
+                      onTap: () => context.push('/friends', extra: 0),
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.person_add_alt_1_rounded,
+                      title: 'Requests',
+                      onTap: () => context.push('/friends', extra: 1),
+                    ),
+                    SizedBox(height: 24.h),
+
+                    // App Settings Section
+                    _buildSectionHeader('App Settings'),
+                    _buildSettingsTile(
+                      icon: Icons.settings_rounded,
+                      title: 'Settings',
+                      onTap: () {},
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.lock_outline_rounded,
+                      title: 'Privacy',
+                      onTap: () {},
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.description_outlined,
+                      title: 'Terms and Conditions',
+                      onTap: () {},
+                    ),
+                    SizedBox(height: 32.h),
+
                     // Sign out button
-                    AppButton(
-                      text: 'Sign Out',
-                      onPressed: () {
-                        ref.read(authControllerProvider.notifier).signOut();
-                        context.go('/login');
-                      },
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () {
+                          ref.read(authControllerProvider.notifier).signOut();
+                          context.go('/login');
+                        },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 16.h),
+                          backgroundColor: Colors.red.withValues(alpha: 0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                        ),
+                        child: Text(
+                          'Sign Out',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 32.h),
+                    Text(
+                      'Version 1.0.0+1',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: AppTheme.textLightColor,
+                      ),
                     ),
                   ] else ...[
                     // Edit mode
@@ -295,6 +355,63 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: EdgeInsets.only(left: 8.w, bottom: 8.h),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textMediumColor,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8.h),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        leading: Container(
+          padding: EdgeInsets.all(8.r),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryLight,
+            borderRadius: BorderRadius.circular(8.r),
+          ),
+          child: Icon(icon, size: 20.r, color: AppTheme.primaryColor),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 15.sp,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textDarkColor,
+          ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          size: 20.r,
+          color: AppTheme.textLightColor,
+        ),
+      ),
     );
   }
 }

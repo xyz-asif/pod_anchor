@@ -59,6 +59,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // Mark room as read explicitly when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(currentOpenRoomProvider.notifier).state = widget.roomId;
       ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
     });
 

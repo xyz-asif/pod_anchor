@@ -7,6 +7,7 @@ import 'package:chatbee/core/services/websocket_service.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/connections/controllers/friends_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
+import 'package:chatbee/features/notifications/controllers/notification_controller.dart';
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
@@ -32,6 +33,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted) return;
 
+    print('[AppLifecycle] State changed to: $state');
+
     // Handle app lifecycle changes for WebSocket connection
     final wsService = ref.read(webSocketServiceProvider);
 
@@ -39,8 +42,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         // App going to background or being terminated
-        // Backend grace period handles offline state, so we simply disconnect immediately
-        wsService.disconnect();
+        // Call disconnect API to instantly notify server that user is offline
+        // This makes other users see us as offline within 1 second
+        wsService.disconnectAndNotifyServer();
         break;
       case AppLifecycleState.resumed:
         // App coming back to foreground - reconnect WebSocket and refresh data
@@ -71,6 +75,9 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
           // Refresh friends list to update online status
           ref.read(friendsControllerProvider.notifier).refresh();
+
+          // Refresh notification badge count
+          ref.read(unreadNotificationCountProvider.notifier).refresh();
         });
         break;
       default:

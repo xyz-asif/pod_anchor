@@ -5,6 +5,7 @@ import 'package:chatbee/app.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:chatbee/core/services/notification_service.dart';
+import 'package:chatbee/features/notifications/repos/notification_repo.dart';
 import 'package:chatbee/core/network/api_client.dart';
 import 'package:chatbee/core/providers/auth_provider.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
@@ -29,6 +30,11 @@ void main() async {
   await apiClient.initialize();
   print('✅ API client initialized');
 
+  // Initialize notification service (permissions and setup)
+  final notificationService = container.read(notificationServiceProvider);
+  await notificationService.initialize();
+  print('🔔 Notification service initialized');
+
   // Check if user was previously logged in (token exists in secure storage)
   final authNotifier = container.read(authNotifierProvider);
   await authNotifier.init();
@@ -37,6 +43,14 @@ void main() async {
   // If already logged in, restore session (fetch profile + reconnect WebSocket)
   if (authNotifier.isLoggedIn) {
     print('🔄 Restoring session...');
+    
+    // 1. Immediately register FCM token for returning users (handles rotation/startup)
+    notificationService.registerTokenWithBackend(
+      container.read(notificationRepoProvider),
+    );
+    print('📲 FCM registration triggered for returning user');
+
+    // 2. Restore profile, WS connection, etc.
     await container.read(authControllerProvider.notifier).restoreSession();
     print('✅ Session restored');
 
@@ -45,10 +59,6 @@ void main() async {
     container.read(wsEventHandlerProvider);
     print('📡 WS event handler initialized');
   }
-
-  // Initialize notification service
-  final notificationService = container.read(notificationServiceProvider);
-  await notificationService.initialize();
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 }

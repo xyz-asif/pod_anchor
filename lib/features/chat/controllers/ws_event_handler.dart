@@ -9,6 +9,8 @@ import 'package:chatbee/features/chat/controllers/message_controller.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/notifications/models/notification_model.dart';
+import 'package:chatbee/features/notifications/controllers/notification_controller.dart';
 
 part 'ws_event_handler.g.dart';
 
@@ -67,6 +69,9 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
         break;
       case WsEventType.connectionAccepted:
         _handleConnectionAccepted(ref, event);
+        break;
+      case WsEventType.notification:
+        _handleNotification(ref, event);
         break;
     }
   });
@@ -328,6 +333,15 @@ class TypingController extends _$TypingController {
   /// Send typing_stop via WebSocket.
   void stopTyping() {
     ref.read(webSocketServiceProvider).sendTypingStop(roomId);
+  }
+}
+
+void _handleNotification(Ref ref, WsEvent event) {
+  try {
+    final notif = NotificationModel.fromJson(event.payload);
+    ref.read(notificationControllerProvider.notifier).addFromWebSocket(notif);
+  } catch (e) {
+    log('Error handling notification event: $e', name: 'WS');
   }
 }
 

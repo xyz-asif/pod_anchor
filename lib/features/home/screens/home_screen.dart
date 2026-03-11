@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/chat/screens/chat_list_screen.dart';
-import 'package:chatbee/features/connections/screens/friends_screen.dart';
 import 'package:chatbee/features/profile/screens/profile_screen.dart';
 import 'package:chatbee/features/search/screens/user_search_screen.dart';
+import 'package:chatbee/features/notifications/screens/notification_screen.dart';
 
 /// Home screen shell — text-only bottom navigation with dot indicator.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -23,14 +23,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   final List<String> _labels = const [
     'CHATS',
     'EXPLORE',
-    'FRIENDS',
+    'ACTIVITY',
     'PROFILE',
   ];
 
   final List<Widget> _screens = const [
     ChatListScreen(),
     UserSearchScreen(),
-    FriendsScreen(),
+    NotificationScreen(),
     ProfileScreen(),
   ];
 
@@ -72,6 +72,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       bottomNavigationBar: _buildBottomNavBar(),
     );
   }
+
+
 
   Widget _buildBottomNavBar() {
     return Container(

@@ -88,14 +88,14 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
         backgroundColor: AppTheme.backgroundColor,
         elevation: 0,
         title: Text(
-          'Find People',
+          'Explore',
           style: TextStyle(
             fontSize: 20.sp,
             fontWeight: FontWeight.w700,
             color: AppTheme.textDarkColor,
           ),
         ),
-        centerTitle: true,
+        centerTitle: false,
       ),
       body: Column(
         children: [
@@ -204,11 +204,13 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
                           }
 
                           final user = searchState.users[index];
+                          final isProcessing = searchState.isProcessing(user.id);
                           return _UserListTile(
                             user: user,
                             onAction: (action) => _handleAction(user, action),
                             animation: _listAnimationController,
                             index: index,
+                            isProcessing: isProcessing,
                           );
                         },
                       );
@@ -378,12 +380,14 @@ class _UserListTile extends StatelessWidget {
   final Function(ConnectionAction) onAction;
   final Animation<double> animation;
   final int index;
+  final bool isProcessing;
 
   const _UserListTile({
     required this.user,
     required this.onAction,
     required this.animation,
     required this.index,
+    this.isProcessing = false,
   });
 
   @override
@@ -545,6 +549,16 @@ class _UserListTile extends StatelessWidget {
   }
 
   Widget _buildActionButton() {
+    // Show loading indicator when processing
+    if (isProcessing) {
+      return FriendActionButton(
+        icon: Icons.hourglass_empty,
+        color: Colors.grey,
+        onPressed: () {},
+        isLoading: true,
+      );
+    }
+
     switch (user.connectionStatus) {
       case 'none':
       case 'rejected':

@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/shared/models/api_response.dart';
@@ -17,14 +16,13 @@ part 'api_client.g.dart';
 ///   final user = UserModel.fromJson(response.data);
 class ApiClient {
   late final Dio _dio;
-  late final FlutterSecureStorage _secureStorage;
+  SharedPreferences? _prefs;
   static const String _tokenKey = 'auth_token';
 
   // Singleton pattern
   static final ApiClient _instance = ApiClient._internal();
 
   ApiClient._internal() {
-    _secureStorage = const FlutterSecureStorage();
     _dio = Dio(
       BaseOptions(
         baseUrl: ApiEndpoints.baseUrl,
@@ -50,28 +48,40 @@ class ApiClient {
     return _instance;
   }
 
-  /// Initialize: Load saved token from secure storage and set in headers
+  /// Get the current auth token from headers
+  String? get currentToken {
+    final authHeader = _dio.options.headers['Authorization'] as String?;
+    if (authHeader != null && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+    return null;
+  }
+
+  /// Initialize: Load saved token from shared preferences and set in headers
   Future<void> initialize() async {
-    final token = await _secureStorage.read(key: _tokenKey);
+    _prefs ??= await SharedPreferences.getInstance();
+    final token = _prefs!.getString(_tokenKey);
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
-      print('Token loaded from secure storage and set in headers');
+      print('✅ Token loaded from shared preferences and set in headers');
     } else {
-      print('No saved token found in secure storage');
+      print('ℹ️ No saved token found in shared preferences');
     }
   }
 
   /// Set auth token after login and save to secure storage
   Future<void> setToken(String token) async {
+    _prefs ??= await SharedPreferences.getInstance();
     _dio.options.headers['Authorization'] = 'Bearer $token';
-    await _secureStorage.write(key: _tokenKey, value: token);
+    await _prefs!.setString(_tokenKey, token);
     print('💾 Token saved to storage: ${token.substring(0, 20)}...');
   }
 
   /// Remove auth token on logout
   Future<void> clearToken() async {
+    _prefs ??= await SharedPreferences.getInstance();
     _dio.options.headers.remove('Authorization');
-    await _secureStorage.delete(key: _tokenKey);
+    await _prefs!.remove(_tokenKey);
     print('🗑️ Token cleared from storage and headers');
   }
 

@@ -68,12 +68,22 @@ class ApiEndpoints {
 
   // ── WebSocket ──
   static const String webSocket = '/chat/ws';
+  static const String chatDisconnect = '/chat/disconnect';
   static String webSocketUrl(String token) {
     final wsBase = baseUrl
         .replaceFirst('http://', 'ws://')
         .replaceFirst('https://', 'wss://');
     return '$wsBase/chat/ws?token=$token';
   }
+
+  // ── Notifications ──
+  static const String notifications = '/notifications';
+  static const String notificationsUnreadCount = '/notifications/unread-count';
+  static String notificationRead(String id) => '/notifications/$id/read';
+  static const String notificationsReadAll = '/notifications/read-all';
+
+  // ── FCM Token ──
+  static const String registerFCMToken = '/users/me/fcm-token';
 
   // ── Health ──
   static const String health = '/health';

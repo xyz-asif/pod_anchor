@@ -12,6 +12,7 @@ class UserSearchController extends _$UserSearchController {
   int _offset = 0;
   bool _hasMore = true;
   List<UserSearchModel> _users = [];
+  final Set<String> _processingUserIds = {};
 
   @override
   Future<UserSearchState> build() async {
@@ -81,39 +82,84 @@ class UserSearchController extends _$UserSearchController {
         users: currentUsers,
         hasMore: _hasMore,
         isLoadingMore: false,
-        error: e.toString(),
+        processingUserIds: _processingUserIds,
       ));
     }
   }
 
   /// Send friend request to user
   Future<void> sendFriendRequest(String userId) async {
-    await _updateUserConnection(userId, 'pending_sent');
-    await ref.read(userSearchRepositoryProvider).sendFriendRequest(userId);
+    if (_processingUserIds.contains(userId)) return;
+    _processingUserIds.add(userId);
+    _notifyState();
+    
+    try {
+      await _updateUserConnection(userId, 'pending_sent');
+      await ref.read(userSearchRepositoryProvider).sendFriendRequest(userId);
+    } finally {
+      _processingUserIds.remove(userId);
+      _notifyState();
+    }
   }
 
   /// Accept friend request
   Future<void> acceptFriendRequest(String userId, String connectionId) async {
-    await _updateUserConnection(userId, 'accepted');
-    await ref.read(userSearchRepositoryProvider).acceptFriendRequest(connectionId);
+    if (_processingUserIds.contains(userId)) return;
+    _processingUserIds.add(userId);
+    _notifyState();
+    
+    try {
+      await _updateUserConnection(userId, 'accepted');
+      await ref.read(userSearchRepositoryProvider).acceptFriendRequest(connectionId);
+    } finally {
+      _processingUserIds.remove(userId);
+      _notifyState();
+    }
   }
 
   /// Reject friend request
   Future<void> rejectFriendRequest(String userId, String connectionId) async {
-    await _updateUserConnection(userId, 'none');
-    await ref.read(userSearchRepositoryProvider).rejectFriendRequest(connectionId);
+    if (_processingUserIds.contains(userId)) return;
+    _processingUserIds.add(userId);
+    _notifyState();
+    
+    try {
+      await _updateUserConnection(userId, 'none');
+      await ref.read(userSearchRepositoryProvider).rejectFriendRequest(connectionId);
+    } finally {
+      _processingUserIds.remove(userId);
+      _notifyState();
+    }
   }
 
   /// Cancel sent friend request
   Future<void> cancelFriendRequest(String userId, String connectionId) async {
-    await _updateUserConnection(userId, 'none');
-    await ref.read(userSearchRepositoryProvider).cancelFriendRequest(connectionId);
+    if (_processingUserIds.contains(userId)) return;
+    _processingUserIds.add(userId);
+    _notifyState();
+    
+    try {
+      await _updateUserConnection(userId, 'none');
+      await ref.read(userSearchRepositoryProvider).cancelFriendRequest(connectionId);
+    } finally {
+      _processingUserIds.remove(userId);
+      _notifyState();
+    }
   }
 
   /// Unfriend / remove connection
   Future<void> removeConnection(String userId, String connectionId) async {
-    await _updateUserConnection(userId, 'none');
-    await ref.read(userSearchRepositoryProvider).removeConnection(connectionId);
+    if (_processingUserIds.contains(userId)) return;
+    _processingUserIds.add(userId);
+    _notifyState();
+    
+    try {
+      await _updateUserConnection(userId, 'none');
+      await ref.read(userSearchRepositoryProvider).removeConnection(connectionId);
+    } finally {
+      _processingUserIds.remove(userId);
+      _notifyState();
+    }
   }
 
   /// Update user connection status locally
@@ -126,10 +172,16 @@ class UserSearchController extends _$UserSearchController {
       return user;
     }).toList();
 
+    _users = updatedUsers;
+    _notifyState();
+  }
+
+  void _notifyState() {
     state = AsyncValue.data(UserSearchState(
-      users: updatedUsers,
+      users: _users,
       hasMore: _hasMore,
       isLoadingMore: false,
+      processingUserIds: _processingUserIds,
     ));
   }
 }
@@ -140,11 +192,15 @@ class UserSearchState {
   final bool hasMore;
   final bool isLoadingMore;
   final String? error;
+  final Set<String> processingUserIds;
 
   const UserSearchState({
     this.users = const [],
     this.hasMore = false,
     this.isLoadingMore = false,
     this.error,
+    this.processingUserIds = const {},
   });
+
+  bool isProcessing(String userId) => processingUserIds.contains(userId);
 }

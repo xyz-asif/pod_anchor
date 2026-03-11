@@ -12,23 +12,28 @@ import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/shared/widgets/friend_shimmer.dart';
 import 'package:chatbee/shared/widgets/friend_action_button.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
+import 'package:chatbee/shared/widgets/notification_bell.dart';
 
 /// Friends screen with two tabs: Friends list and Pending requests.
 class FriendsScreen extends ConsumerWidget {
-  const FriendsScreen({super.key});
+  final int initialTabIndex;
+
+  const FriendsScreen({
+    super.key,
+    this.initialTabIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
       length: 2,
+      initialIndex: initialTabIndex,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Friends'),
-          actions: [
-            IconButton(
-              icon: Icon(Icons.person_search_rounded, size: 24.r),
-              onPressed: () => context.push('/search'),
-            ),
+          title: const Text('Friends', style: TextStyle(fontWeight: FontWeight.w600)),
+          centerTitle: false,
+          actions: const [
+            NotificationBell(),
           ],
           bottom: TabBar(
             labelColor: AppTheme.primaryColor,

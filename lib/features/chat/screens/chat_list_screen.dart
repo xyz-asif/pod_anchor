@@ -12,15 +12,78 @@ import 'package:chatbee/shared/widgets/app_snackbar.dart';
 /// Chat list screen — shows all chat rooms sorted by recent activity.
 ///
 /// Each tile shows: avatar, name, last message preview, time, unread badge, online dot.
-class ChatListScreen extends ConsumerWidget {
+class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends ConsumerState<ChatListScreen> {
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchController.clear();
+        _searchFocusNode.unfocus();
+      } else {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final roomsState = ref.watch(chatListControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chats')),
+      appBar: AppBar(
+        title: AnimatedCrossFade(
+          firstChild: const Text('Chats', style: TextStyle(fontWeight: FontWeight.w600)),
+          secondChild: TextField(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            decoration: InputDecoration(
+              hintText: 'Search chats...',
+              border: InputBorder.none,
+              hintStyle: TextStyle(color: AppTheme.textLightColor, fontSize: 16.sp),
+            ),
+            style: TextStyle(color: AppTheme.textDarkColor, fontSize: 16.sp),
+          ),
+          crossFadeState: _isSearching ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 300),
+          alignment: Alignment.centerLeft,
+        ),
+        centerTitle: false,
+        actions: [
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded, size: 24.r),
+            onPressed: _toggleSearch,
+          ),
+        ],
+      ),
       body: roomsState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -40,7 +103,52 @@ class ChatListScreen extends ConsumerWidget {
             ],
           ),
         ),
-        data: (rooms) {
+        data: (allRooms) {
+          final currentUserId = ref
+              .read(authControllerProvider)
+              .valueOrNull
+              ?.id;
+
+          // Local Search Filter
+          final rooms = allRooms.where((room) {
+            if (_searchQuery.isEmpty) return true;
+            
+            final otherParticipant = room.participants.firstWhere(
+              (p) => p.id != currentUserId,
+              orElse: () => room.participants.isNotEmpty
+                  ? room.participants.first
+                  : throw Exception('No participants'),
+            );
+            
+            final displayName = (otherParticipant.displayName ?? '').toLowerCase();
+            final email = (otherParticipant.email ?? '').toLowerCase();
+            
+            return displayName.contains(_searchQuery) || email.contains(_searchQuery);
+          }).toList();
+
+          if (rooms.isEmpty && _searchQuery.isNotEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.search_off_rounded,
+                    size: 64.r,
+                    color: AppTheme.textLightColor,
+                  ),
+                  SizedBox(height: 12.h),
+                  Text(
+                    'No chats found',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      color: AppTheme.textMediumColor,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
           if (rooms.isEmpty) {
             return Center(
               child: Column(
@@ -72,10 +180,6 @@ class ChatListScreen extends ConsumerWidget {
             );
           }
 
-          final currentUserId = ref
-              .read(authControllerProvider)
-              .valueOrNull
-              ?.id;
 
           return RefreshIndicator(
             onRefresh: () =>

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
@@ -24,7 +25,8 @@ enum WsEventType {
   roomUpdated,
   profileUpdated,
   presenceSync,
-  connectionAccepted;
+  connectionAccepted,
+  notification;
 
   static WsEventType? fromString(String? value) {
     switch (value) {
@@ -56,6 +58,8 @@ enum WsEventType {
         return WsEventType.presenceSync;
       case 'connection_accepted':
         return WsEventType.connectionAccepted;
+      case 'notification':
+        return WsEventType.notification;
       default:
         return null;
     }
@@ -91,6 +95,8 @@ enum WsEventType {
         return 'presence_sync';
       case WsEventType.connectionAccepted:
         return 'connection_accepted';
+      case WsEventType.notification:
+        return 'notification';
     }
   }
 }
@@ -130,12 +136,13 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final _eventController = StreamController<WsEvent>.broadcast();
   Timer? _reconnectTimer;
-  Timer? _pingTimer;
   String? _token;
   bool _isConnected = false;
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
   Timer? _presenceSyncTimer;
+  Timer? _pingTimer;
+  static const int _pingIntervalSeconds = 20;
   Completer<bool>? _connectCompleter;
   bool _intentionalDisconnect = false;
 
@@ -209,7 +216,7 @@ class WebSocketService {
           if (!_isConnected) {
             _isConnected = true;
             _startPresenceSyncTimer();
-            _startPingTimer();
+            _startPingTimer(); // Start ping timer only once when connected
             log('WebSocket connected', name: 'WS');
             if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
               _connectCompleter!.complete(true);
@@ -275,16 +282,6 @@ class WebSocketService {
     }
   }
 
-  /// Start periodic ping to keep connection alive (every 30s)
-  void _startPingTimer() {
-    _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (_isConnected) {
-        send({'type': 'ping'});
-        log('WS ping sent', name: 'WS');
-      }
-    });
-  }
 
   /// Start periodic presence sync every 60s
   void _startPresenceSyncTimer() {
@@ -296,10 +293,28 @@ class WebSocketService {
     });
   }
 
+  /// Start periodic ping every 30s to keep connection alive
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(
+      const Duration(seconds: _pingIntervalSeconds),
+      (_) {
+        if (_isConnected && _channel != null) {
+          try {
+            _channel!.sink.add(jsonEncode({'type': 'ping'}));
+            log('WS ping sent', name: 'WS');
+          } catch (e) {
+            log('WS ping error: $e', name: 'WS');
+          }
+        }
+      },
+    );
+  }
+
   void _handleDisconnect() {
     _isConnected = false;
-    _pingTimer?.cancel();
     _presenceSyncTimer?.cancel();
+    _pingTimer?.cancel();
     if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
       _connectCompleter!.complete(false);
     }
@@ -407,8 +422,8 @@ class WebSocketService {
 
   /// Close the WebSocket channel without resetting token.
   void _closeChannel() {
-    _presenceSyncTimer?.cancel();
     _reconnectTimer?.cancel();
+    _presenceSyncTimer?.cancel();
     _pingTimer?.cancel();
     try {
       _channel?.sink.close();
@@ -422,6 +437,38 @@ class WebSocketService {
     _intentionalDisconnect = true;
     _closeChannel();
     // Don't clear _token so we can reconnect on app resume
+  }
+
+  /// Call disconnect API and close WebSocket.
+  /// This should be called when app goes to background/terminated
+  /// to instantly notify server that user is offline.
+  Future<void> disconnectAndNotifyServer() async {
+    if (_token == null) {
+      disconnect();
+      return;
+    }
+
+    _intentionalDisconnect = true;
+
+    try {
+      // Call disconnect API with short timeout
+      // Fire and forget - don't block the app from closing
+      final response = await http.post(
+        Uri.parse(ApiEndpoints.baseUrl + ApiEndpoints.chatDisconnect),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 3));
+
+      log('[LIFECYCLE] Disconnect API called: ${response.statusCode}', name: 'WS');
+    } catch (e) {
+      // Ignore errors - just try our best
+      log('[LIFECYCLE] Disconnect API error: $e', name: 'WS');
+    } finally {
+      // Always close WebSocket
+      _closeChannel();
+    }
   }
 
   /// Dispose all resources.

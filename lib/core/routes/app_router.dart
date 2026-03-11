@@ -4,7 +4,9 @@ import 'package:chatbee/core/providers/auth_provider.dart';
 import 'package:chatbee/features/auth/views/login_view.dart';
 import 'package:chatbee/features/home/screens/home_screen.dart';
 import 'package:chatbee/features/chat/screens/chat_screen.dart';
-import 'package:chatbee/features/profile/screens/user_search_screen.dart';
+import 'package:chatbee/features/profile/screens/user_search_screen.dart'; // Ignore error if alias
+import 'package:chatbee/features/notifications/screens/notification_screen.dart';
+import 'package:chatbee/features/connections/screens/friends_screen.dart';
 
 /// GoRouter provider — created once and cached.
 /// Uses AuthNotifier as refreshListenable so redirects fire on login/logout.
@@ -45,6 +47,21 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/search',
         builder: (context, state) => const UserSearchScreen(),
+      ),
+
+      // ── Notifications ──
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationScreen(),
+      ),
+
+      // ── Friends ──
+      GoRoute(
+        path: '/friends',
+        builder: (context, state) {
+          final initialIndex = state.extra as int? ?? 0;
+          return FriendsScreen(initialTabIndex: initialIndex);
+        },
       ),
     ],
   );
