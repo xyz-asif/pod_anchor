@@ -43,7 +43,8 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   Timer? _typingDebounce;
@@ -54,26 +55,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Start listening to WS events
+    WidgetsBinding.instance.addObserver(this);
+
     ref.read(wsEventHandlerProvider);
 
     // Mark room as read explicitly when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(currentOpenRoomProvider.notifier).state = widget.roomId;
       ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
-    });
-
-    // Force refresh messages when screen opens to handle backgrounding scenarios
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Invalidate the message controller to force a fresh fetch
-      ref.invalidate(messageControllerProvider(widget.roomId));
+      ref.read(chatListControllerProvider.notifier).clearUnreadCount(widget.roomId);
     });
 
     _scrollController.addListener(_onScroll);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState != AppLifecycleState.resumed || !mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Merge-fetch missed messages — no loading spinner, no state wipe
+      ref.read(messageControllerProvider(widget.roomId).notifier).silentRefresh();
+      // Mark as read after fetch so server gets the correct read receipt
+      ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
+      ref.read(chatListControllerProvider.notifier).clearUnreadCount(widget.roomId);
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    
     // Clear currentOpenRoom after frame completes (navigation has happened)
     // This avoids the "ref invalid after dispose" error
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -36,6 +36,29 @@ class MessageController extends _$MessageController {
     ref.read(chatRepoProvider).markRoomAsRead(roomId);
   }
 
+  /// Fetch the latest messages from API and merge with current state.
+  /// Unlike build() which replaces state, this appends any messages
+  /// not already present. Safe to call on resume with no loading flash.
+  Future<void> silentRefresh() async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    try {
+      final result = await ref.read(chatRepoProvider).getMessages(roomId: roomId);
+      final fetched = result.$1;
+      
+      // Merge: keep all existing, append any fetched messages not already present
+      final existingIds = current.map((m) => m.id).toSet();
+      final newMessages = fetched.where((m) => !existingIds.contains(m.id)).toList();
+      
+      if (newMessages.isNotEmpty) {
+        state = AsyncValue.data([...current, ...newMessages]);
+      }
+    } catch (_) {
+      // Silent — don't disturb existing state on failure
+    }
+  }
+
   /// Load older messages (pagination with cursor).
   Future<void> loadOlder() async {
     if (!_hasMore || _isLoadingOlder) return;
