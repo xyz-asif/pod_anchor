@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -23,23 +25,38 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
   String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text.toLowerCase();
+      final query = _searchController.text;
+      setState(() => _searchQuery = query);
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+        ref.read(chatListControllerProvider.notifier).search(query);
       });
     });
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      ref.read(chatListControllerProvider.notifier).loadMore();
+    }
   }
 
   void _toggleSearch() {
@@ -109,22 +126,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               .valueOrNull
               ?.id;
 
-          // Local Search Filter
-          final rooms = allRooms.where((room) {
-            if (_searchQuery.isEmpty) return true;
-            
-            final otherParticipant = room.participants.firstWhere(
-              (p) => p.id != currentUserId,
-              orElse: () => room.participants.isNotEmpty
-                  ? room.participants.first
-                  : throw Exception('No participants'),
-            );
-            
-            final displayName = (otherParticipant.displayName ?? '').toLowerCase();
-            final email = (otherParticipant.email ?? '').toLowerCase();
-            
-            return displayName.contains(_searchQuery) || email.contains(_searchQuery);
-          }).toList();
+          final rooms = allRooms;
 
           if (rooms.isEmpty && _searchQuery.isNotEmpty) {
             return Center(
@@ -185,6 +187,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             onRefresh: () =>
                 ref.read(chatListControllerProvider.notifier).refresh(),
             child: ListView.separated(
+              controller: _scrollController,
               itemCount: rooms.length,
               separatorBuilder: (_, __) =>
                   Divider(height: 1, indent: 76.w, color: AppTheme.borderColor),
