@@ -8,7 +8,7 @@ part of 'websocket_service.dart';
 
 String _$webSocketServiceHash() => r'09c55f3cb11cb7c1f61f744de8271458daecc147';
 
-/// Riverpod provider for WebSocketService (singleton).
+/// Riverpod provider for WebSocketService (keepAlive singleton).
 ///
 /// Copied from [webSocketService].
 @ProviderFor(webSocketService)

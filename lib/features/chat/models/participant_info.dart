@@ -10,6 +10,7 @@ class ParticipantInfo {
   final String? displayName;
   final String? photoURL;
   final String? email;
+  final String? bio;
   final bool isOnline;
 
   const ParticipantInfo({
@@ -17,6 +18,7 @@ class ParticipantInfo {
     this.displayName,
     this.photoURL,
     this.email,
+    this.bio,
     this.isOnline = false,
   });
 
@@ -30,6 +32,7 @@ class ParticipantInfo {
     String? displayName,
     String? photoURL,
     String? email,
+    String? bio,
     bool? isOnline,
   }) {
     return ParticipantInfo(
@@ -37,6 +40,7 @@ class ParticipantInfo {
       displayName: displayName ?? this.displayName,
       photoURL: photoURL ?? this.photoURL,
       email: email ?? this.email,
+      bio: bio ?? this.bio,
       isOnline: isOnline ?? this.isOnline,
     );
   }

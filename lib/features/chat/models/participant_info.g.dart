@@ -12,6 +12,7 @@ ParticipantInfo _$ParticipantInfoFromJson(Map<String, dynamic> json) =>
       displayName: json['displayName'] as String?,
       photoURL: json['photoURL'] as String?,
       email: json['email'] as String?,
+      bio: json['bio'] as String?,
       isOnline: json['isOnline'] as bool? ?? false,
     );
 
@@ -21,5 +22,6 @@ Map<String, dynamic> _$ParticipantInfoToJson(ParticipantInfo instance) =>
       'displayName': instance.displayName,
       'photoURL': instance.photoURL,
       'email': instance.email,
+      'bio': instance.bio,
       'isOnline': instance.isOnline,
     };

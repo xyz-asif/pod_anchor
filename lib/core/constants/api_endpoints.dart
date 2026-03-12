@@ -5,11 +5,14 @@ class ApiEndpoints {
 
   // Base URL — change per environment
   // static const String baseUrl = 'http://10.193.113.78:8080/api/v1';
+  // static const String baseUrl = 'http://192.168.1.132:8080/api/v1';
   static const String baseUrl = 'http://asifs-macbook-air.local:8080/api/v1';
+  // static const String baseUrl = 'https://YOUR_NGROK_URL.ngrok.io/api/v1';
 
   // ── Users ──
   static const String usersMe = '/users/me';
   static const String usersSearch = '/users/search';
+  static const String usersSearchWithStatus = '/users/search-with-status';
 
   // ── Connections (Friends) ──
   static const String connectionRequest = '/connections/request';
@@ -19,8 +22,14 @@ class ApiEndpoints {
   /// Use: '/connections/$id/accept'
   static String connectionAccept(String id) => '/connections/$id/accept';
 
+  /// Use: '/connections/$id/cancel'
+  static String connectionCancel(String id) => '/connections/$id/cancel';
+
   /// Use: '/connections/$id/reject'
   static String connectionReject(String id) => '/connections/$id/reject';
+
+  /// Use: '/connections/$id' (delete/unfriend)
+  static String connectionDelete(String id) => '/connections/$id';
 
   // ── Chat Rooms ──
   static const String chatRooms = '/chat/rooms';
@@ -34,6 +43,9 @@ class ApiEndpoints {
 
   /// Use: '/chat/rooms/$roomId/read'
   static String chatRoomRead(String roomId) => '/chat/rooms/$roomId/read';
+
+  /// Use: '/chat/rooms/$roomId' (delete chat)
+  static String chatRoomDelete(String roomId) => '/chat/rooms/$roomId';
 
   // ── Messages ──
   /// Use: '/chat/messages/$messageId/status'
@@ -56,12 +68,22 @@ class ApiEndpoints {
 
   // ── WebSocket ──
   static const String webSocket = '/chat/ws';
+  static const String chatDisconnect = '/chat/disconnect';
   static String webSocketUrl(String token) {
     final wsBase = baseUrl
         .replaceFirst('http://', 'ws://')
         .replaceFirst('https://', 'wss://');
     return '$wsBase/chat/ws?token=$token';
   }
+
+  // ── Notifications ──
+  static const String notifications = '/notifications';
+  static const String notificationsUnreadCount = '/notifications/unread-count';
+  static String notificationRead(String id) => '/notifications/$id/read';
+  static const String notificationsReadAll = '/notifications/read-all';
+
+  // ── FCM Token ──
+  static const String registerFCMToken = '/users/me/fcm-token';
 
   // ── Health ──
   static const String health = '/health';

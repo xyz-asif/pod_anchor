@@ -43,7 +43,8 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   Timer? _typingDebounce;
@@ -54,19 +55,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Start listening to WS events
+    WidgetsBinding.instance.addObserver(this);
+
     ref.read(wsEventHandlerProvider);
 
     // Mark room as read explicitly when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(currentOpenRoomProvider.notifier).state = widget.roomId;
       ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
+      ref.read(chatListControllerProvider.notifier).clearUnreadCount(widget.roomId);
     });
 
     _scrollController.addListener(_onScroll);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState != AppLifecycleState.resumed || !mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Merge-fetch missed messages — no loading spinner, no state wipe
+      ref.read(messageControllerProvider(widget.roomId).notifier).silentRefresh();
+      // Mark as read after fetch so server gets the correct read receipt
+      ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
+      ref.read(chatListControllerProvider.notifier).clearUnreadCount(widget.roomId);
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    
+    // Clear currentOpenRoom after frame completes (navigation has happened)
+    // This avoids the "ref invalid after dispose" error
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        ref.read(currentOpenRoomProvider.notifier).state = null;
+      } catch (_) {}
+    });
+
     // Cancel recording - wrap in try-catch since ref may be disposed
     try {
       ref
@@ -152,9 +180,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _showAttachmentPicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceColor,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
       ),
       builder: (context) {
         return AttachmentPicker(
@@ -734,18 +762,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             },
           ),
 
-          // Input bar
+          // Input bar - Dark Theme
           Container(
             padding: EdgeInsets.only(
               left: 12.w,
-              right: 4.w,
-              top: 8.h,
-              bottom: MediaQuery.of(context).padding.bottom + 8.h,
+              right: 12.w,
+              top: 12.h,
+              bottom: MediaQuery.of(context).padding.bottom + 12.h,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.surfaceColor,
               border: Border(
-                top: BorderSide(color: AppTheme.borderColor, width: 0.5),
+                top: BorderSide(color: AppTheme.borderColor, width: 1),
               ),
             ),
             child: Consumer(
@@ -807,58 +835,102 @@ class _ChatInputBar extends ConsumerWidget {
         final hasText = value.text.trim().isNotEmpty;
         return Row(
           children: [
-            // Attachment button
-            IconButton(
-              icon: Icon(
-                Icons.attach_file_rounded,
-                size: 22.r,
-                color: AppTheme.textMediumColor,
+            // Attachment button - Elegant outlined style
+            GestureDetector(
+              onTap: onAttachment,
+              child: Container(
+                width: 40.r,
+                height: 40.r,
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor,
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(
+                    color: AppTheme.borderColor,
+                    width: 1,
+                  ),
+                ),
+                child: Icon(
+                  Icons.attach_file_rounded,
+                  size: 20.r,
+                  color: AppTheme.textMediumColor,
+                ),
               ),
-              onPressed: onAttachment,
             ),
+            SizedBox(width: 8.w),
             Expanded(
-              child: TextField(
-                controller: controller,
-                onChanged: onChanged,
-                maxLines: 4,
-                minLines: 1,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'Type a message...',
-                  hintStyle: TextStyle(
-                    fontSize: 14.sp,
-                    color: AppTheme.textLightColor,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.featureBackgroundColor,
+                  borderRadius: BorderRadius.circular(24.r),
+                  border: Border.all(
+                    color: AppTheme.borderColor,
+                    width: 1,
                   ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24.r),
-                    borderSide: BorderSide.none,
+                ),
+                child: TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  maxLines: 4,
+                  minLines: 1,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    color: AppTheme.textDarkColor,
                   ),
-                  filled: true,
-                  fillColor: AppTheme.featureBackgroundColor,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 10.h,
+                  decoration: InputDecoration(
+                    hintText: 'Type a message...',
+                    hintStyle: TextStyle(
+                      fontSize: 15.sp,
+                      color: AppTheme.textLightColor,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 12.h,
+                    ),
                   ),
                 ),
               ),
             ),
-            SizedBox(width: 4.w),
-            Container(
-              decoration: BoxDecoration(
-                color: hasText ? AppTheme.primaryColor : Colors.grey.shade200,
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: Icon(
+            SizedBox(width: 8.w),
+            // Send/Mic button - Circular with gradient
+            GestureDetector(
+              onTap: hasText
+                  ? () => onSend(controller.text.trim())
+                  : () => ref
+                      .read(recordingControllerProvider(roomId).notifier)
+                      .start(),
+              child: Container(
+                width: 44.r,
+                height: 44.r,
+                decoration: BoxDecoration(
+                  gradient: hasText
+                      ? LinearGradient(
+                          colors: [
+                            AppTheme.primaryColor,
+                            AppTheme.primaryColor.withValues(alpha: 0.8),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: hasText ? null : AppTheme.borderColor,
+                  shape: BoxShape.circle,
+                  boxShadow: hasText
+                      ? [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Icon(
                   hasText ? Icons.send_rounded : Icons.mic_rounded,
                   size: 20.r,
-                  color: hasText ? Colors.white : AppTheme.textDarkColor,
+                  color: hasText ? Colors.white : AppTheme.textMediumColor,
                 ),
-                onPressed: hasText
-                    ? () => onSend(controller.text.trim())
-                    : () => ref
-                          .read(recordingControllerProvider(roomId).notifier)
-                          .start(),
               ),
             ),
           ],
@@ -1138,7 +1210,7 @@ class _MessageBubble extends StatelessWidget {
                     color: isDeleted
                         ? Colors.grey.shade100
                         : isMe
-                        ? AppTheme.primaryColor
+                        ? AppTheme.primaryDark
                         : AppTheme.featureBackgroundColor,
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(16.r),

@@ -1,9 +1,13 @@
+import 'dart:convert';
 import 'dart:developer';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:chatbee/features/notifications/repos/notification_repo.dart';
+import 'package:chatbee/features/notifications/utils/notification_navigator.dart';
 
 part 'notification_service.g.dart';
 
@@ -12,7 +16,6 @@ part 'notification_service.g.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   log('Handling a background message: ${message.messageId}', name: 'FCM');
-  // You can initialize other Firebase services or local databases here if needed
 }
 
 /// A service wrapper for handling Firebase Cloud Messaging and local notifications.
@@ -23,23 +26,52 @@ class NotificationService {
 
   bool _isInitialized = false;
 
-  /// Call this once after Firebase.initializeApp()
+  /// Pending notification data from app launch via terminated state.
+  Map<String, dynamic>? _pendingNotificationData;
+
+  /// Call this once after Firebase.initializeApp().
+  /// Handles permissions, local notification setup, and message handlers.
+  /// Does NOT register FCM token with backend (requires auth).
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    // 1. Request permissions (especially useful on iOS)
     await requestPermissions();
-
-    // 2. Setup local notifications for Android foreground alerts
     await _setupLocalNotifications();
-
-    // 3. Listen to state changes
     _setupMessageHandlers();
 
-    // 4. Get FCM Token
+    // Get FCM token (for logging/debugging)
     await getFCMToken();
 
     _isInitialized = true;
+  }
+
+  /// Call after login when API client has a valid auth token.
+  /// Registers the FCM token with the backend and listens for token refresh.
+  Future<void> registerTokenWithBackend(NotificationRepo repo) async {
+    final token = await _fcm.getToken();
+    if (token != null) {
+      try {
+        await repo.registerFCMToken(token);
+        log('FCM token registered with backend', name: 'FCM');
+      } catch (e) {
+        log('Failed to register FCM token: $e', name: 'FCM');
+      }
+    }
+
+    _fcm.onTokenRefresh.listen((newToken) async {
+      try {
+        await repo.registerFCMToken(newToken);
+        log('Refreshed FCM token registered', name: 'FCM');
+      } catch (_) {}
+    });
+  }
+
+  /// Check and handle pending notification navigation (call after app is ready).
+  void handlePendingNotification(BuildContext context) {
+    if (_pendingNotificationData != null) {
+      _handleNotificationNavigation(context, _pendingNotificationData!);
+      _pendingNotificationData = null;
+    }
   }
 
   Future<void> requestPermissions() async {
@@ -62,7 +94,6 @@ class NotificationService {
     try {
       final token = await _fcm.getToken();
       log('FCM Token: $token', name: 'FCM');
-      // Typically, here you would send the token to your backend via API
       return token;
     } catch (e) {
       log('Failed to get FCM token: $e', name: 'FCM_ERROR');
@@ -72,10 +103,9 @@ class NotificationService {
 
   Future<void> _setupLocalNotifications() async {
     const androidChannel = AndroidNotificationChannel(
-      'high_importance_channel', // id
-      'High Importance Notifications', // title
-      description:
-          'This channel is used for important notifications.', // description
+      'high_importance_channel',
+      'High Importance Notifications',
+      description: 'This channel is used for important notifications.',
       importance: Importance.high,
     );
 
@@ -89,7 +119,6 @@ class NotificationService {
       '@mipmap/ic_launcher',
     );
 
-    // For iOS configuration using latest version
     const initializationSettingsIOS = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -105,20 +134,26 @@ class NotificationService {
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         log('Local notification tapped: ${response.payload}', name: 'FCM');
-        // Handle local notification tap here
+        // Parse the payload back to a Map and navigate
+        if (response.payload != null) {
+          try {
+            final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+            // Store for later navigation (context not available here)
+            _pendingNotificationData = data;
+          } catch (_) {}
+        }
       },
     );
 
-    // Update foreground presentation options for iOS
     await _fcm.setForegroundNotificationPresentationOptions(
-      alert: true, // Required to display a heads up notification
+      alert: true,
       badge: true,
       sound: true,
     );
   }
 
   void _setupMessageHandlers() {
-    // 1. Foregound messages
+    // 1. Foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       log('Received foreground message: ${message.messageId}', name: 'FCM');
       _showLocalNotification(message);
@@ -130,19 +165,36 @@ class NotificationService {
         'Message clicked! App opened from background: ${message.messageId}',
         name: 'FCM',
       );
-      // Handle navigation logic based on message data here
+      _handleNotificationTap(message.data);
     });
 
-    // 3. (Optional) Check if app was launched directly from a notification (Terminated state)
+    // 3. Check if app was launched from a notification (terminated state)
     _fcm.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         log(
-          'App launched from terminated state via notification: ${message.messageId}',
+          'App launched from terminated state via notification',
           name: 'FCM',
         );
-        // Handle initial navigation or setup here
+        _pendingNotificationData = message.data;
       }
     });
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    // Store the data for navigation when context is available
+    _pendingNotificationData = data;
+  }
+
+  void _handleNotificationNavigation(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    final resourceType = data['resourceType'] as String?;
+    final resourceId = data['resourceId'] as String?;
+
+    if (resourceType != null && resourceId != null) {
+      navigateToNotification(context, resourceType, resourceId);
+    }
   }
 
   void _showLocalNotification(RemoteMessage message) {
@@ -156,7 +208,7 @@ class NotificationService {
         body: notification.body,
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
-            'high_importance_channel', // Must match the channel created in _setupLocalNotifications
+            'high_importance_channel',
             'High Importance Notifications',
             channelDescription:
                 'This channel is used for important notifications.',
@@ -165,7 +217,7 @@ class NotificationService {
             priority: Priority.high,
           ),
         ),
-        payload: message.data.toString(), // Pass custom data payload
+        payload: jsonEncode(message.data),
       );
     }
   }

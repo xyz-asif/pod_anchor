@@ -121,6 +121,12 @@ class ChatRepo {
     );
   }
 
+  /// Delete a chat room and all its messages.
+  /// For direct chats, this also unfriends the user.
+  Future<void> deleteChat(String roomId) async {
+    await apiClient.delete(ApiEndpoints.chatRoomDelete(roomId));
+  }
+
   /// Delete a message (soft delete, sender only).
   Future<void> deleteMessage(String messageId) async {
     await apiClient.delete(ApiEndpoints.messageDelete(messageId));

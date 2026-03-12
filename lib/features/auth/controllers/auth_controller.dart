@@ -1,9 +1,12 @@
+import 'package:chatbee/core/network/api_client.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:chatbee/features/auth/repos/auth_repo.dart';
 import 'package:chatbee/core/services/websocket_service.dart';
 import 'package:chatbee/core/providers/auth_provider.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
+import 'package:chatbee/core/services/notification_service.dart';
+import 'package:chatbee/features/notifications/repos/notification_repo.dart';
 
 part 'auth_controller.g.dart';
 
@@ -34,6 +37,11 @@ class AuthController extends _$AuthController {
       // Update auth state so the router redirects to /home
       ref.read(authNotifierProvider).login();
 
+      // Register FCM token with backend (requires auth)
+      final notifService = ref.read(notificationServiceProvider);
+      final notifRepo = ref.read(notificationRepoProvider);
+      notifService.registerTokenWithBackend(notifRepo);
+
       return user;
     });
   }
@@ -58,21 +66,46 @@ class AuthController extends _$AuthController {
   /// Check if user is signed in and restore session.
   Future<void> restoreSession() async {
     final repo = ref.read(authRepoProvider);
-    if (!repo.isSignedIn) return;
+    final apiClient = ref.read(apiClientProvider);
+    
+    // If no Firebase user AND no token in API client, we are truly logged out
+    if (!repo.isSignedIn && !apiClient.hasToken) return;
 
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      // Refresh token and fetch profile
-      await repo.refreshToken();
+      // 1. Refresh token if Firebase session exists
+      if (repo.isSignedIn) {
+        await repo.refreshToken();
+      }
+      
+      // 2. Fetch profile from backend (uses token currently in ApiClient)
       final user = await repo.getMyProfile();
 
-      // Reconnect WebSocket
-      final token = await repo.getIdToken();
+      // 3. Reconnect WebSocket using existing token
+      final token = repo.isSignedIn 
+          ? await repo.getIdToken() 
+          : apiClient.currentToken;
+          
       if (token != null) {
         ref.read(webSocketServiceProvider).connect(token);
       }
 
       return user;
     });
+  }
+
+  /// Returns a freshly-refreshed Firebase ID token.
+  /// Call this from lifecycle resume handler before reconnecting WebSocket.
+  /// Returns null if user is not signed in.
+  Future<String?> getAndRefreshToken() async {
+    final repo = ref.read(authRepoProvider);
+    if (!repo.isSignedIn) return null;
+    try {
+      await repo.refreshToken();      // forces Firebase token rotation
+      return await repo.getIdToken(); // returns new token
+    } catch (e) {
+      // If refresh fails, existing token is returned; WS will retry on failure
+      return await repo.getIdToken();
+    }
   }
 }

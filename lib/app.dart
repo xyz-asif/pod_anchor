@@ -4,6 +4,10 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/core/routes/app_router.dart';
 import 'package:chatbee/core/services/websocket_service.dart';
+import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
+import 'package:chatbee/features/connections/controllers/friends_controller.dart';
+import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
@@ -26,28 +30,74 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Handle app lifecycle changes for WebSocket connection
-    final wsService = ref.read(webSocketServiceProvider);
-    
-    switch (state) {
-      case AppLifecycleState.paused:
-      case AppLifecycleState.detached:
-        // App going to background or being terminated
-        // Gracefully disconnect WebSocket so server knows user is offline
-        wsService.disconnect();
-        break;
-      case AppLifecycleState.resumed:
-        // App coming back to foreground - reconnect if needed
-        // The auth controller will handle reconnection
-        break;
-      default:
-        break;
-    }
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (!mounted) return;
+  print('[Lifecycle] → $state');
+
+  final wsService = ref.read(webSocketServiceProvider);
+
+  switch (state) {
+    case AppLifecycleState.paused:
+    case AppLifecycleState.hidden: // iOS-specific background state
+      // App is genuinely in background — notify server and close socket.
+      // Note: detached is intentionally excluded (can fire spuriously on Android).
+      wsService.disconnectAndNotifyServer();
+      break;
+
+    case AppLifecycleState.resumed:
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+
+        // ── Step 1: Refresh Firebase token ──────────────────────────────
+        // Firebase tokens expire after 1 hour. If app was backgrounded
+        // longer than that, stored token is stale and WS server will
+        // reject it — causing a permanent disconnect until app restarts.
+        final freshToken = await ref
+            .read(authControllerProvider.notifier)
+            .getAndRefreshToken();
+
+        if (!mounted) return;
+
+        // Inject fresh token before reconnecting
+        if (freshToken != null) {
+          wsService.updateToken(freshToken);
+        }
+
+        // ── Step 2: Reconnect WebSocket ──────────────────────────────────
+        final connected = await wsService.connectIfNeeded(
+          timeout: const Duration(seconds: 8),
+        );
+
+        if (!mounted) return;
+
+        if (connected) {
+          print('[Lifecycle] WS reconnected, syncing presence');
+          wsService.sendPresenceStatus(true);
+          wsService.requestPresenceSync();
+        } else {
+          print('[Lifecycle] WS reconnect failed (will retry via backoff)');
+          // The backoff timer in WebSocketService handles retries automatically.
+          // Also, connectivity_plus listener will trigger an instant retry
+          // once network is available again.
+        }
+
+        // ── Step 3: Refresh UI data ──────────────────────────────────────
+        // Background refresh is non-blocking and doesn't show a spinner.
+        ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+        ref.read(friendsControllerProvider.notifier).refresh();
+      });
+      break;
+
+    default:
+      break;
   }
+}
 
   @override
   Widget build(BuildContext context) {
+    // Keep the WebSocket event handler alive and active forever
+    ref.watch(wsEventHandlerProvider);
+
     final router = ref.watch(goRouterProvider);
 
     return ScreenUtilInit(
@@ -58,7 +108,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
         return MaterialApp.router(
           title: 'ChatBee',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.light,
+          theme: AppTheme.dark,
           darkTheme: AppTheme.dark,
           themeMode: ThemeMode.light,
           routerConfig: router,

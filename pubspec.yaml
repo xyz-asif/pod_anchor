@@ -56,9 +56,13 @@ dependencies:
 
   # WebSocket
   web_socket_channel:
+  connectivity_plus: ^6.1.4
 
   # Image caching
   cached_network_image:
+  
+  # Shimmer loading effects
+  shimmer: ^3.0.0
 
   # Utilities
   intl:
