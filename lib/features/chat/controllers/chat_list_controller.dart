@@ -16,31 +16,32 @@ part 'chat_list_controller.g.dart';
 @Riverpod(keepAlive: true)
 class ChatListController extends _$ChatListController {
   bool _isDisposed = false;
+  bool _hasMore = false;
+  bool _isLoadingMore = false;
+  int _currentOffset = 0;
+  static const int _pageSize = 20;
+  String _searchQuery = '';
+  String? _openRoomId;
 
   @override
   FutureOr<List<RoomResponse>> build() async {
-    // Track disposal
     ref.onDispose(() => _isDisposed = true);
 
-    // Wait for auth to be ready before loading
-    // This prevents race condition where we try to load before token is set
     final authState = await ref.watch(authControllerProvider.future);
-    if (authState == null) {
-      // Not authenticated yet, return empty list
-      // Will auto-rebuild when auth state changes
-      return [];
-    }
+    if (authState == null) return [];
 
-    // Extra check: wait for API client to actually have the token
-    // This handles the race condition where auth state updates before token is set
     final apiClient = ref.read(apiClientProvider);
     if (!apiClient.hasToken) {
-      // Token not ready yet, return empty and wait for rebuild
       print('⏳ ChatListController: Token not ready, waiting...');
       return [];
     }
 
-    final rooms = await ref.read(chatRepoProvider).getRooms();
+    _currentOffset = 0;
+    final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
+      limit: _pageSize,
+      offset: 0,
+    );
+    _hasMore = hasMore;
     return _sortByLastUpdated(rooms);
   }
 
@@ -58,10 +59,16 @@ class ChatListController extends _$ChatListController {
   /// Refresh rooms from server.
   Future<void> refresh() async {
     if (_isDisposed) return;
+    _currentOffset = 0;
+    _searchQuery = '';
     state = const AsyncValue.loading();
     if (_isDisposed) return;
     state = await AsyncValue.guard(() async {
-      final rooms = await ref.read(chatRepoProvider).getRooms();
+      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
+        limit: _pageSize,
+        offset: 0,
+      );
+      _hasMore = hasMore;
       return _sortByLastUpdated(rooms);
     });
   }
@@ -70,15 +77,67 @@ class ChatListController extends _$ChatListController {
   /// Used when returning from a chat screen to sync state smoothly.
   Future<void> backgroundRefresh() async {
     try {
-      final rooms = await ref.read(chatRepoProvider).getRooms();
-      // Only update state if provider hasn't been disposed
+      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
+        query: _searchQuery.isEmpty ? null : _searchQuery,
+        limit: _pageSize,
+        offset: 0,
+      );
+      _hasMore = hasMore;
+      _currentOffset = 0;
       if (!_isDisposed) {
         state = AsyncValue.data(_sortByLastUpdated(rooms));
       }
     } catch (e) {
-      // Ignore background refresh errors — let existing state persist
+      // Ignore background refresh errors
     }
   }
+
+  /// Search rooms on the server. Debounce this call from the UI.
+  Future<void> search(String query) async {
+    if (_isDisposed) return;
+    _searchQuery = query;
+    _currentOffset = 0;
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
+        query: query.isEmpty ? null : query,
+        limit: _pageSize,
+        offset: 0,
+      );
+      _hasMore = hasMore;
+      return _sortByLastUpdated(rooms);
+    });
+  }
+
+  /// Load the next page of rooms (append to existing list).
+  Future<void> loadMore() async {
+    if (_isDisposed || _isLoadingMore || !_hasMore) return;
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    _isLoadingMore = true;
+    try {
+      final nextOffset = _currentOffset + _pageSize;
+      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
+        query: _searchQuery.isEmpty ? null : _searchQuery,
+        limit: _pageSize,
+        offset: nextOffset,
+      );
+      _hasMore = hasMore;
+      _currentOffset = nextOffset;
+      if (!_isDisposed) {
+        // Deduplicate by id before appending
+        final existingIds = current.map((r) => r.id).toSet();
+        final newRooms = rooms.where((r) => !existingIds.contains(r.id)).toList();
+        state = AsyncValue.data(_sortByLastUpdated([...current, ...newRooms]));
+      }
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+
+  /// Whether more pages are available.
+  bool get hasMore => _hasMore;
 
   /// Move a room to the top when a new message arrives (via WebSocket).
   /// Uses background refresh if room not found to avoid loading spinner.
@@ -237,5 +296,29 @@ class ChatListController extends _$ChatListController {
     state = AsyncValue.data(
       rooms.where((r) => r.id != roomId).toList(),
     );
+  }
+
+  /// Track the currently open room for auto-mark-as-read.
+  Future<void> setOpenRoomId(String roomId) async {
+    _openRoomId = roomId;
+
+    // Optimistically update local state: set unreadCount to 0
+    final rooms = state.valueOrNull;
+    if (rooms != null) {
+      final updated = rooms.map((r) {
+        if (r.id == roomId) {
+          return r.copyWith(unreadCount: 0);
+        }
+        return r;
+      }).toList();
+      state = AsyncValue.data(updated);
+    }
+
+    // Call API to mark messages as read
+    try {
+      await ref.read(chatRepoProvider).markRoomAsRead(roomId);
+    } catch (e) {
+      // Silently ignore errors — local state is already updated
+    }
   }
 }

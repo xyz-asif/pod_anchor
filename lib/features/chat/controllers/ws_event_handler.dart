@@ -346,7 +346,7 @@ void _handleNotification(Ref ref, WsEvent event) {
 }
 
 /// Handle connection_accepted event - add new room when friend request is accepted
-void _handleConnectionAccepted(Ref ref, WsEvent event) {
+void _handleConnectionAccepted(Ref ref, WsEvent event) async {
   try {
     final payload = event.payload;
     final roomData = payload['room'] as Map<String, dynamic>?;
@@ -361,6 +361,10 @@ void _handleConnectionAccepted(Ref ref, WsEvent event) {
     
     // Add the room to the chat list
     ref.read(chatListControllerProvider.notifier).upsertRoom(room);
+ log('Connection accepted: requesting presence sync', name: 'WS');
+await Future.delayed(const Duration(milliseconds: 300));
+ref.read(webSocketServiceProvider).requestPresenceSync();
+log('Connection accepted: presence sync requested', name: 'WS');
     
     // Get the other user's ID for notification
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;

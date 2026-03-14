@@ -16,13 +16,36 @@ class ChatRepo {
 
   // ── Rooms ──
 
-  /// Get all chat rooms (sorted by lastUpdated, newest first).
-  Future<List<RoomResponse>> getRooms() async {
-    final response = await apiClient.get(ApiEndpoints.chatRooms);
-    final list = response.data as List;
-    return list
+  /// Get chat rooms (sorted by lastUpdated, newest first).
+  /// Supports optional search query and pagination.
+  Future<(List<RoomResponse>, bool, int)> getRooms({
+    String? query,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    final queryParameters = <String, dynamic>{
+      'limit': limit,
+      'offset': offset,
+    };
+    if (query != null && query.isNotEmpty) {
+      queryParameters['q'] = query;
+    }
+
+    final response = await apiClient.get(
+      ApiEndpoints.chatRooms,
+      queryParameters: queryParameters,
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    final list = data['rooms'] as List;
+    final hasMore = data['hasMore'] as bool? ?? false;
+    final totalCount = data['totalCount'] as int? ?? 0;
+
+    final rooms = list
         .map((e) => RoomResponse.fromJson(e as Map<String, dynamic>))
         .toList();
+
+    return (rooms, hasMore, totalCount);
   }
 
   /// Get or create a 1-on-1 chat room with a user.
