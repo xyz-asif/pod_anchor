@@ -21,6 +21,7 @@ class ChatListController extends _$ChatListController {
   int _currentOffset = 0;
   static const int _pageSize = 20;
   String _searchQuery = '';
+  String? _openRoomId;
 
   @override
   FutureOr<List<RoomResponse>> build() async {
@@ -295,5 +296,29 @@ class ChatListController extends _$ChatListController {
     state = AsyncValue.data(
       rooms.where((r) => r.id != roomId).toList(),
     );
+  }
+
+  /// Track the currently open room for auto-mark-as-read.
+  Future<void> setOpenRoomId(String roomId) async {
+    _openRoomId = roomId;
+
+    // Optimistically update local state: set unreadCount to 0
+    final rooms = state.valueOrNull;
+    if (rooms != null) {
+      final updated = rooms.map((r) {
+        if (r.id == roomId) {
+          return r.copyWith(unreadCount: 0);
+        }
+        return r;
+      }).toList();
+      state = AsyncValue.data(updated);
+    }
+
+    // Call API to mark messages as read
+    try {
+      await ref.read(chatRepoProvider).markRoomAsRead(roomId);
+    } catch (e) {
+      // Silently ignore errors — local state is already updated
+    }
   }
 }

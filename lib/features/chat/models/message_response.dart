@@ -29,9 +29,14 @@ enum MessageStatus {
 /// - `metadata`: optional media metadata (dimensions, file info, etc.)
 @JsonSerializable()
 class MessageResponse {
+  @JsonKey(defaultValue: '')
   final String id;
+  @JsonKey(defaultValue: '')
   final String roomId;
+  @JsonKey(defaultValue: '')
   final String senderId;
+  final String? connectionId;
+  @JsonKey(defaultValue: '')
   final String content;
   final String status;
   final String type;
@@ -47,6 +52,7 @@ class MessageResponse {
     required this.id,
     required this.roomId,
     required this.senderId,
+    this.connectionId,
     required this.content,
     this.status = 'sent',
     this.type = 'text',
@@ -77,6 +83,7 @@ class MessageResponse {
     String? id,
     String? roomId,
     String? senderId,
+    String? connectionId,
     String? content,
     String? status,
     String? type,
@@ -92,6 +99,7 @@ class MessageResponse {
       id: id ?? this.id,
       roomId: roomId ?? this.roomId,
       senderId: senderId ?? this.senderId,
+      connectionId: connectionId ?? this.connectionId,
       content: content ?? this.content,
       status: status ?? this.status,
       type: type ?? this.type,

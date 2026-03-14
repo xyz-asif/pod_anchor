@@ -8,10 +8,11 @@ part of 'message_response.dart';
 
 MessageResponse _$MessageResponseFromJson(Map<String, dynamic> json) =>
     MessageResponse(
-      id: json['id'] as String,
-      roomId: json['roomId'] as String,
-      senderId: json['senderId'] as String,
-      content: json['content'] as String,
+      id: json['id'] as String? ?? '',
+      roomId: json['roomId'] as String? ?? '',
+      senderId: json['senderId'] as String? ?? '',
+      connectionId: json['connectionId'] as String?,
+      content: json['content'] as String? ?? '',
       status: json['status'] as String? ?? 'sent',
       type: json['type'] as String? ?? 'text',
       reactions:
@@ -40,6 +41,7 @@ Map<String, dynamic> _$MessageResponseToJson(MessageResponse instance) =>
       'id': instance.id,
       'roomId': instance.roomId,
       'senderId': instance.senderId,
+      'connectionId': instance.connectionId,
       'content': instance.content,
       'status': instance.status,
       'type': instance.type,
