@@ -25,6 +25,7 @@ class ProfileController extends _$ProfileController {
     String? displayName,
     String? photoURL,
     String? bio,
+    String? coverImageURL,
   }) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(
@@ -34,6 +35,7 @@ class ProfileController extends _$ProfileController {
             displayName: displayName,
             photoURL: photoURL,
             bio: bio,
+            coverImageURL: coverImageURL,
           ),
     );
   }

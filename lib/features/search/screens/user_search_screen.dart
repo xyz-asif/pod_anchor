@@ -255,11 +255,13 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
       switch (action) {
         case ConnectionAction.addFriend:
           await controller.sendFriendRequest(user.id);
-          AppSnackbar.show(
-            context,
-            message: 'Friend request sent',
-            type: SnackbarType.success,
-          );
+          if (mounted) {
+            AppSnackbar.show(
+              context,
+              message: 'Friend request sent',
+              type: SnackbarType.success,
+            );
+          }
           break;
         case ConnectionAction.accept:
           if (user.connectionId == null) {
@@ -271,11 +273,13 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
             return;
           }
           await controller.acceptFriendRequest(user.id, user.connectionId!);
-          AppSnackbar.show(
-            context,
-            message: 'Friend request accepted',
-            type: SnackbarType.success,
-          );
+          if (mounted) {
+            AppSnackbar.show(
+              context,
+              message: 'Friend request accepted',
+              type: SnackbarType.success,
+            );
+          }
           break;
         case ConnectionAction.reject:
           if (user.connectionId == null) {
@@ -287,11 +291,13 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
             return;
           }
           await controller.rejectFriendRequest(user.id, user.connectionId!);
-          AppSnackbar.show(
-            context,
-            message: 'Friend request rejected',
-            type: SnackbarType.info,
-          );
+          if (mounted) {
+            AppSnackbar.show(
+              context,
+              message: 'Friend request rejected',
+              type: SnackbarType.info,
+            );
+          }
           break;
         case ConnectionAction.cancel:
           if (user.connectionId == null) {
@@ -303,11 +309,13 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
             return;
           }
           await controller.cancelFriendRequest(user.id, user.connectionId!);
-          AppSnackbar.show(
-            context,
-            message: 'Request cancelled',
-            type: SnackbarType.info,
-          );
+          if (mounted) {
+            AppSnackbar.show(
+              context,
+              message: 'Request cancelled',
+              type: SnackbarType.info,
+            );
+          }
           break;
         case ConnectionAction.unfriend:
           if (user.connectionId == null) {
@@ -321,20 +329,24 @@ class _UserSearchScreenState extends ConsumerState<UserSearchScreen>
           final confirmed = await _showUnfriendConfirmDialog(user.displayName);
           if (confirmed) {
             await controller.removeConnection(user.id, user.connectionId!);
-            AppSnackbar.show(
-              context,
-              message: 'Unfriended ${user.displayName}',
-              type: SnackbarType.info,
-            );
+            if (mounted) {
+              AppSnackbar.show(
+                context,
+                message: 'Unfriended ${user.displayName}',
+                type: SnackbarType.info,
+              );
+            }
           }
           break;
       }
     } catch (e) {
-      AppSnackbar.show(
-        context,
-        message: e.toString(),
-        type: SnackbarType.error,
-      );
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: e.toString(),
+          type: SnackbarType.error,
+        );
+      }
     }
   }
 

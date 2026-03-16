@@ -1,4 +1,5 @@
 /// Useful extensions to keep code clean.
+library;
 
 extension StringExtension on String {
   /// "hello world" → "Hello world"

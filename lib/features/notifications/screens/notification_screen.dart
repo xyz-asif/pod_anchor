@@ -125,14 +125,30 @@ class _NotificationTile extends StatelessWidget {
 
   IconData _iconForType(String type) {
     switch (type) {
+      case 'poem_liked':     return Icons.favorite_rounded;
+      case 'commented':      return Icons.chat_bubble_rounded;
+      case 'comment_liked':  return Icons.favorite_border_rounded;
+      case 'reposted':       return Icons.repeat_rounded;
+      case 'followed':       return Icons.person_add_rounded;
+      case 'mentioned':      return Icons.alternate_email_rounded;
+      case 'connection_request': return Icons.person_add_rounded;
+      case 'connection_accepted': return Icons.people_rounded;
+      case 'new_message':    return Icons.chat_bubble_rounded;
+      default:               return Icons.notifications_rounded;
+    }
+  }
+
+  Color _colorForType(String type) {
+    switch (type) {
+      case 'poem_liked':
+      case 'comment_liked':  return Colors.red;
+      case 'followed':
       case 'connection_request':
-        return Icons.person_add_rounded;
-      case 'connection_accepted':
-        return Icons.people_rounded;
-      case 'new_message':
-        return Icons.chat_bubble_rounded;
-      default:
-        return Icons.notifications_rounded;
+      case 'connection_accepted': return AppTheme.primaryColor;
+      case 'reposted':       return Colors.green;
+      case 'mentioned':      return Colors.orange;
+      case 'new_message':    return AppTheme.primaryColor;
+      default:               return AppTheme.textMediumColor;
     }
   }
 
@@ -169,9 +185,9 @@ class _NotificationTile extends StatelessWidget {
                     width: 18.r,
                     height: 18.r,
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
+                      color: _colorForType(notification.type),
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                      border: Border.all(color: AppTheme.surfaceColor, width: 2),
                     ),
                     child: Icon(
                       _iconForType(notification.type),

@@ -37,10 +37,9 @@ class ChatListController extends _$ChatListController {
     }
 
     _currentOffset = 0;
-    final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
-      limit: _pageSize,
-      offset: 0,
-    );
+    final (rooms, hasMore, _) = await ref
+        .read(chatRepoProvider)
+        .getRooms(limit: _pageSize, offset: 0);
     _hasMore = hasMore;
     return _sortByLastUpdated(rooms);
   }
@@ -64,10 +63,9 @@ class ChatListController extends _$ChatListController {
     state = const AsyncValue.loading();
     if (_isDisposed) return;
     state = await AsyncValue.guard(() async {
-      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
-        limit: _pageSize,
-        offset: 0,
-      );
+      final (rooms, hasMore, _) = await ref
+          .read(chatRepoProvider)
+          .getRooms(limit: _pageSize, offset: 0);
       _hasMore = hasMore;
       return _sortByLastUpdated(rooms);
     });
@@ -77,11 +75,13 @@ class ChatListController extends _$ChatListController {
   /// Used when returning from a chat screen to sync state smoothly.
   Future<void> backgroundRefresh() async {
     try {
-      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
-        query: _searchQuery.isEmpty ? null : _searchQuery,
-        limit: _pageSize,
-        offset: 0,
-      );
+      final (rooms, hasMore, _) = await ref
+          .read(chatRepoProvider)
+          .getRooms(
+            query: _searchQuery.isEmpty ? null : _searchQuery,
+            limit: _pageSize,
+            offset: 0,
+          );
       _hasMore = hasMore;
       _currentOffset = 0;
       if (!_isDisposed) {
@@ -99,11 +99,13 @@ class ChatListController extends _$ChatListController {
     _currentOffset = 0;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
-        query: query.isEmpty ? null : query,
-        limit: _pageSize,
-        offset: 0,
-      );
+      final (rooms, hasMore, _) = await ref
+          .read(chatRepoProvider)
+          .getRooms(
+            query: query.isEmpty ? null : query,
+            limit: _pageSize,
+            offset: 0,
+          );
       _hasMore = hasMore;
       return _sortByLastUpdated(rooms);
     });
@@ -118,17 +120,21 @@ class ChatListController extends _$ChatListController {
     _isLoadingMore = true;
     try {
       final nextOffset = _currentOffset + _pageSize;
-      final (rooms, hasMore, _) = await ref.read(chatRepoProvider).getRooms(
-        query: _searchQuery.isEmpty ? null : _searchQuery,
-        limit: _pageSize,
-        offset: nextOffset,
-      );
+      final (rooms, hasMore, _) = await ref
+          .read(chatRepoProvider)
+          .getRooms(
+            query: _searchQuery.isEmpty ? null : _searchQuery,
+            limit: _pageSize,
+            offset: nextOffset,
+          );
       _hasMore = hasMore;
       _currentOffset = nextOffset;
       if (!_isDisposed) {
         // Deduplicate by id before appending
         final existingIds = current.map((r) => r.id).toSet();
-        final newRooms = rooms.where((r) => !existingIds.contains(r.id)).toList();
+        final newRooms = rooms
+            .where((r) => !existingIds.contains(r.id))
+            .toList();
         state = AsyncValue.data(_sortByLastUpdated([...current, ...newRooms]));
       }
     } finally {
@@ -293,9 +299,7 @@ class ChatListController extends _$ChatListController {
   Future<void> deleteRoom(String roomId) async {
     await ref.read(chatRepoProvider).deleteChat(roomId);
     final rooms = state.valueOrNull ?? [];
-    state = AsyncValue.data(
-      rooms.where((r) => r.id != roomId).toList(),
-    );
+    state = AsyncValue.data(rooms.where((r) => r.id != roomId).toList());
   }
 
   /// Track the currently open room for auto-mark-as-read.

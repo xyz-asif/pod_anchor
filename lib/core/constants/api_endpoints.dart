@@ -14,6 +14,31 @@ class ApiEndpoints {
   static const String usersSearch = '/users/search';
   static const String usersSearchWithStatus = '/users/search-with-status';
 
+  // Follow
+  static String userFollow(String userId) => '/users/$userId/follow';
+  static String userProfile(String userId) => '/users/$userId/profile';
+  static String userFollowers(String userId) => '/users/$userId/followers';
+  static String userFollowing(String userId) => '/users/$userId/following';
+
+  // Feed
+  static const String homeFeed = '/feed';
+  static const String exploreFeed = '/feed/explore';
+
+  // Search
+  static const String searchPoems = '/search/poems';
+  static const String searchUsers = '/search/users';
+
+  // Profile setup
+  static const String userSetup = '/users/setup';
+  static const String usernameCheck = '/users/username/check';
+  static const String usernameSet = '/users/username';
+
+  // Poems
+  static const String poems = '/poems';
+  static String poem(String id) => '/poems/$id';
+  static const String myPoems = '/poems/me';
+  static String userPoems(String userId) => '/poems/user/$userId';
+
   // ── Connections (Friends) ──
   static const String connectionRequest = '/connections/request';
   static const String connectionsPending = '/connections/pending';
@@ -87,4 +112,16 @@ class ApiEndpoints {
 
   // ── Health ──
   static const String health = '/health';
+
+  // ── Social ──
+  static String poemLike(String id) => '/poems/$id/like';
+  static String poemLikes(String id) => '/poems/$id/likes';
+  static String poemComments(String id) => '/poems/$id/comments';
+  static String commentDelete(String id) => '/comments/$id';
+  static String commentLike(String id) => '/comments/$id/like';
+  static String poemRepost(String id) => '/poems/$id/repost';
+  static String userReposts(String userId) => '/users/$userId/reposts';
+
+  // ── Audio Feed ──
+  static const String audioFeed = '/feed/audio';
 }

@@ -12,6 +12,8 @@ import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/chat/models/message_type.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
+import 'package:chatbee/features/chat/models/room_response.dart';
+import 'package:chatbee/features/chat/models/participant_info.dart';
 import 'package:chatbee/features/chat/screens/widgets/attachment_picker.dart';
 import 'package:chatbee/features/chat/screens/widgets/gif_picker_sheet.dart';
 import 'package:chatbee/features/chat/screens/widgets/link_preview.dart';
@@ -483,18 +485,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     // Get room details to find the other user's info
     final chatListState = ref.watch(chatListControllerProvider);
-    final currentRoom = chatListState.valueOrNull?.firstWhere(
-      (r) => r.id == widget.roomId,
-      // fallback if not found
-      orElse: () => throw StateError('Room not found'),
+    final rooms = chatListState.valueOrNull ?? [];
+    final currentRoom = rooms.cast<RoomResponse?>().firstWhere(
+      (r) => r?.id == widget.roomId,
+      orElse: () => null,
     );
 
-    // Find the other participant
-    final otherParticipant = currentRoom?.participants.firstWhere(
-      (p) => p.id != currentUserId,
-      // fallback
-      orElse: () => throw StateError('Participant not found'),
-    );
+    // If room not found in local list, trigger a background refresh
+    if (currentRoom == null) {
+      // Schedule refresh after frame to avoid calling during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+      });
+    }
+
+    // Find the other participant (gracefully handle null room)
+    final otherParticipant = currentRoom?.participants
+        .cast<ParticipantInfo?>()
+        .firstWhere(
+          (p) => p!.id != currentUserId,
+          orElse: () => null,
+        );
 
     final displayName = otherParticipant?.displayName ?? 'Chat';
     final photoURL = otherParticipant?.photoURL;

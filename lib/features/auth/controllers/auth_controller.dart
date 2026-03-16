@@ -108,4 +108,21 @@ class AuthController extends _$AuthController {
       return await repo.getIdToken();
     }
   }
+
+  /// Update the user object in state after profile setup or username set.
+  /// Called by profile setup flow to keep state fresh without a full re-fetch.
+  void updateUser(UserModel updatedUser) {
+    state = AsyncValue.data(updatedUser);
+  }
+
+  /// Update the logged-in user's following count locally by an offset (+1 or -1).
+  void updateFollowingCount(int offset) {
+    state.whenData((user) {
+      if (user != null) {
+        state = AsyncValue.data(user.copyWith(
+          followingCount: (user.followingCount + offset).clamp(0, 999999),
+        ));
+      }
+    });
+  }
 }

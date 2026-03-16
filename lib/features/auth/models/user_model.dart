@@ -12,6 +12,19 @@ class UserModel {
   final String? displayName;
   final String? photoURL;
   final String? bio;
+  final String? username;
+  final String? externalLink;
+  final String? coverImageURL;
+  @JsonKey(defaultValue: false)
+  final bool isProfileSetup;
+  @JsonKey(defaultValue: false)
+  final bool isEditor;
+  @JsonKey(defaultValue: 0)
+  final int postsCount;
+  @JsonKey(defaultValue: 0)
+  final int followersCount;
+  @JsonKey(defaultValue: 0)
+  final int followingCount;
   final bool isActive;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -23,6 +36,14 @@ class UserModel {
     this.displayName,
     this.photoURL,
     this.bio,
+    this.username,
+    this.externalLink,
+    this.coverImageURL,
+    this.isProfileSetup = false,
+    this.isEditor = false,
+    this.postsCount = 0,
+    this.followersCount = 0,
+    this.followingCount = 0,
     this.isActive = true,
     this.createdAt,
     this.updatedAt,
@@ -40,6 +61,14 @@ class UserModel {
     String? displayName,
     String? photoURL,
     String? bio,
+    String? username,
+    String? externalLink,
+    String? coverImageURL,
+    bool? isProfileSetup,
+    bool? isEditor,
+    int? postsCount,
+    int? followersCount,
+    int? followingCount,
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -51,6 +80,14 @@ class UserModel {
       displayName: displayName ?? this.displayName,
       photoURL: photoURL ?? this.photoURL,
       bio: bio ?? this.bio,
+      username: username ?? this.username,
+      externalLink: externalLink ?? this.externalLink,
+      coverImageURL: coverImageURL ?? this.coverImageURL,
+      isProfileSetup: isProfileSetup ?? this.isProfileSetup,
+      isEditor: isEditor ?? this.isEditor,
+      postsCount: postsCount ?? this.postsCount,
+      followersCount: followersCount ?? this.followersCount,
+      followingCount: followingCount ?? this.followingCount,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

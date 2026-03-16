@@ -1,0 +1,94 @@
+Analyzing chatbee...                                            
+
+   info • Don't invoke 'print' in production code • lib/app.dart:35:3 • avoid_print
+   info • Don't invoke 'print' in production code • lib/app.dart:74:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/app.dart:78:11 • avoid_print
+   info • 'background' is deprecated and shouldn't be used. Use surface instead. This feature was deprecated after v3.18.0-0.1.pre • lib/config/theme/app_theme.dart:60:7 • deprecated_member_use
+   info • 'MaterialStateProperty' is deprecated and shouldn't be used. Use WidgetStateProperty instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:189:18 • deprecated_member_use
+   info • 'MaterialState' is deprecated and shouldn't be used. Use WidgetState instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:190:29 • deprecated_member_use
+   info • 'MaterialStateProperty' is deprecated and shouldn't be used. Use WidgetStateProperty instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:199:18 • deprecated_member_use
+   info • 'MaterialState' is deprecated and shouldn't be used. Use WidgetState instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:200:29 • deprecated_member_use
+   info • 'background' is deprecated and shouldn't be used. Use surface instead. This feature was deprecated after v3.18.0-0.1.pre • lib/config/theme/app_theme.dart:254:7 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/config/theme/app_theme.dart:373:50 • deprecated_member_use
+   info • 'MaterialStateProperty' is deprecated and shouldn't be used. Use WidgetStateProperty instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:383:18 • deprecated_member_use
+   info • 'MaterialState' is deprecated and shouldn't be used. Use WidgetState instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:384:29 • deprecated_member_use
+   info • 'MaterialStateProperty' is deprecated and shouldn't be used. Use WidgetStateProperty instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:393:18 • deprecated_member_use
+   info • 'MaterialState' is deprecated and shouldn't be used. Use WidgetState instead. Moved to the Widgets layer to make code available outside of Material. This feature was deprecated after v3.19.0-0.3.pre • lib/config/theme/app_theme.dart:394:29 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/core/network/api_client.dart:43:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/core/network/api_client.dart:66:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/core/network/api_client.dart:68:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/core/network/api_client.dart:77:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/core/network/api_client.dart:85:5 • avoid_print
+   info • 'ApiClientRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/core/network/api_client.dart:148:21 • deprecated_member_use_from_same_package
+   info • The imported package 'http' isn't a dependency of the importing package • lib/core/services/websocket_service.dart:8:8 • depend_on_referenced_packages
+   info • Dangling library doc comment • lib/core/utils/extensions.dart:1:1 • dangling_library_doc_comments
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:34:5 • avoid_print
+   info • Uses 'await' on an instance of 'GoogleSignInAuthentication', which is not a subtype of 'Future' • lib/features/auth/repos/auth_repo.dart:38:24 • await_only_futures
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:39:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:48:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:56:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:59:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:61:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:64:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/auth/repos/auth_repo.dart:69:5 • avoid_print
+   info • 'AuthRepoRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/features/auth/repos/auth_repo.dart:119:19 • deprecated_member_use_from_same_package
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/auth/views/login_view.dart:55:48 • deprecated_member_use
+warning • The value of the field '_openRoomId' isn't used • lib/features/chat/controllers/chat_list_controller.dart:24:11 • unused_field
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/chat_list_controller.dart:35:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/ws_event_handler.dart:88:3 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/ws_event_handler.dart:91:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/ws_event_handler.dart:96:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/ws_event_handler.dart:116:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/ws_event_handler.dart:119:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/features/chat/controllers/ws_event_handler.dart:125:7 • avoid_print
+   info • Unnecessary use of multiple underscores • lib/features/chat/screens/chat_list_screen.dart:192:37 • unnecessary_underscores
+   info • Don't use 'BuildContext's across async gaps • lib/features/chat/screens/chat_list_screen.dart:259:25 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/chat/screens/chat_list_screen.dart:265:25 • use_build_context_synchronously
+   info • Unnecessary use of multiple underscores • lib/features/chat/screens/chat_screen.dart:415:44 • unnecessary_underscores
+   info • Don't invoke 'print' in production code • lib/features/connections/controllers/friends_controller.dart:33:7 • avoid_print
+   info • The 'if' statement could be replaced by a null-aware assignment • lib/features/connections/controllers/friends_controller.dart:80:11 • prefer_conditional_assignment
+   info • 'ConnectionRepoRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/features/connections/repos/connection_repo.dart:59:31 • deprecated_member_use_from_same_package
+   info • Unnecessary use of multiple underscores • lib/features/connections/screens/friends_screen.dart:83:26 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores • lib/features/connections/screens/friends_screen.dart:138:35 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores • lib/features/connections/screens/friends_screen.dart:286:26 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores • lib/features/connections/screens/friends_screen.dart:336:35 • unnecessary_underscores
+   info • Use a 'SizedBox' to add whitespace to a layout • lib/features/home/screens/home_screen.dart:134:18 • sized_box_for_whitespace
+   info • Unnecessary use of multiple underscores • lib/features/notifications/screens/notification_screen.dart:94:37 • unnecessary_underscores
+   info • The import of 'package:flutter_riverpod/flutter_riverpod.dart' is unnecessary because all of the used elements are also provided by the import of 'package:riverpod_annotation/riverpod_annotation.dart' • lib/features/poems/repos/poem_repo.dart:1:8 • unnecessary_import
+   info • 'PoemRepoRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/features/poems/repos/poem_repo.dart:94:19 • deprecated_member_use_from_same_package
+   info • Unnecessary use of multiple underscores • lib/features/poems/screens/my_poems_screen.dart:111:37 • unnecessary_underscores
+  error • The named parameter 'configurations' isn't defined • lib/features/poems/screens/poetry_editor_screen.dart:171:21 • undefined_named_parameter
+  error • The name 'QuillSimpleToolbarConfigurations' isn't a class • lib/features/poems/screens/poetry_editor_screen.dart:171:49 • creation_with_non_type
+  error • The named parameter 'configurations' isn't defined • lib/features/poems/screens/poetry_editor_screen.dart:201:23 • undefined_named_parameter
+  error • The function 'QuillEditorConfigurations' isn't defined • lib/features/poems/screens/poetry_editor_screen.dart:201:45 • undefined_function
+warning • Unused import: 'dart:io' • lib/features/poems/widgets/publish_bottom_sheet.dart:2:8 • unused_import
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:369:64 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:394:68 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:396:75 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:584:31 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:586:50 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:677:33 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/features/poems/widgets/publish_bottom_sheet.dart:679:52 • deprecated_member_use
+   info • 'ProfileRepoRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/features/profile/repos/profile_repo.dart:76:25 • deprecated_member_use_from_same_package
+   info • 'UserRepoRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/features/profile/repos/user_repo.dart:57:19 • deprecated_member_use_from_same_package
+warning • The value of the field '_coverImageURL' isn't used • lib/features/profile/screens/profile_setup_screen.dart:28:11 • unused_field
+   info • 'UserSearchRepositoryRef' is deprecated and shouldn't be used. Will be removed in 3.0. Use Ref instead • lib/features/search/repos/user_search_repository.dart:68:43 • deprecated_member_use_from_same_package
+   info • Unnecessary use of multiple underscores • lib/features/search/screens/user_search_screen.dart:170:34 • unnecessary_underscores
+   info • Don't use 'BuildContext's across async gaps • lib/features/search/screens/user_search_screen.dart:259:13 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/search/screens/user_search_screen.dart:275:13 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/search/screens/user_search_screen.dart:291:13 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/search/screens/user_search_screen.dart:307:13 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/search/screens/user_search_screen.dart:325:15 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/search/screens/user_search_screen.dart:334:9 • use_build_context_synchronously
+   info • Unnecessary use of multiple underscores • lib/features/search/screens/user_search_screen.dart:466:47 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores • lib/features/search/screens/user_search_screen.dart:466:51 • unnecessary_underscores
+   info • Don't invoke 'print' in production code • lib/main.dart:28:3 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:31:3 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:36:3 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:41:3 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:45:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:51:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:55:5 • avoid_print
+   info • Don't invoke 'print' in production code • lib/main.dart:60:5 • avoid_print
+warning • Unused import: 'package:chatbee/core/constants/app_colors.dart' • lib/shared/widgets/app_button.dart:5:8 • unused_import
+

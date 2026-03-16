@@ -43,7 +43,7 @@ void main() async {
   // If already logged in, restore session (fetch profile + reconnect WebSocket)
   if (authNotifier.isLoggedIn) {
     print('🔄 Restoring session...');
-    
+
     // 1. Immediately register FCM token for returning users (handles rotation/startup)
     notificationService.registerTokenWithBackend(
       container.read(notificationRepoProvider),

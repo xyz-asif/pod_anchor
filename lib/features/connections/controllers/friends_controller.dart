@@ -77,9 +77,7 @@ class FriendsController extends _$FriendsController {
             displayName = participant.displayName ?? participant.email ?? friendUserId;
           }
           // Only override if connection data didn't provide photo
-          if (photoURL == null) {
-            photoURL = participant.photoURL;
-          }
+          photoURL ??= participant.photoURL;
           isOnline = participant.isOnline;
           lastMessage = room.lastMessage;
           break;

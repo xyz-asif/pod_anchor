@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/core/routes/app_router.dart';
 import 'package:chatbee/core/services/websocket_service.dart';
@@ -112,6 +114,13 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
           darkTheme: AppTheme.dark,
           themeMode: ThemeMode.light,
           routerConfig: router,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            FlutterQuillLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('en')],
         );
       },
     );

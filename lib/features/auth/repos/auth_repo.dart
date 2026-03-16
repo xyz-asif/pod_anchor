@@ -35,7 +35,7 @@ class AuthRepo {
     final googleUser = await _googleSignIn.authenticate();
 
     // 2️⃣ Get authentication tokens
-    final googleAuth = await googleUser.authentication;
+    final googleAuth = googleUser.authentication;
     print('✅ Google authentication successful');
 
     // 3️⃣ Create Firebase credential

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
+import 'package:chatbee/features/feed/screens/home_feed_screen.dart';
 import 'package:chatbee/features/chat/screens/chat_list_screen.dart';
+import 'package:chatbee/features/feed/screens/explore_screen.dart';
 import 'package:chatbee/features/profile/screens/profile_screen.dart';
-import 'package:chatbee/features/search/screens/user_search_screen.dart';
-import 'package:chatbee/features/notifications/screens/notification_screen.dart';
 
 /// Home screen shell — text-only bottom navigation with dot indicator.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -20,17 +21,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   int _currentIndex = 0;
   late final List<AnimationController> _animationControllers;
 
-  final List<String> _labels = const [
-    'CHATS',
-    'EXPLORE',
-    'ACTIVITY',
-    'PROFILE',
-  ];
+  final List<String> _labels = const ['HOME', 'CHATS', 'EXPLORE', 'PROFILE'];
 
   final List<Widget> _screens = const [
+    HomeFeedScreen(),
     ChatListScreen(),
-    UserSearchScreen(),
-    NotificationScreen(),
+    ExploreScreen(),
     ProfileScreen(),
   ];
 
@@ -70,10 +66,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: _buildBottomNavBar(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/editor'),
+        backgroundColor: AppTheme.primaryColor,
+        child: Icon(Icons.edit_rounded, color: Colors.white, size: 24.r),
+      ),
     );
   }
-
-
 
   Widget _buildBottomNavBar() {
     return Container(
@@ -85,10 +84,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           decoration: BoxDecoration(
             color: AppTheme.surfaceColor,
             border: Border(
-              top: BorderSide(
-                color: AppTheme.borderColor,
-                width: 1,
-              ),
+              top: BorderSide(color: AppTheme.borderColor, width: 1),
             ),
           ),
           child: Row(
@@ -131,7 +127,7 @@ class _NavItem extends StatelessWidget {
         builder: (context, child) {
           final progress = animation.value;
 
-          return Container(
+          return SizedBox(
             width: 80.w,
             height: 60.h,
             child: Column(

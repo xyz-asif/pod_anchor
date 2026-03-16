@@ -85,10 +85,21 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
 }
 
 void _handleNewMessage(Ref ref, WsEvent event) {
+  // Guard: ignore messages with no roomId — they cannot be routed correctly
+  if (event.roomId.isEmpty) {
+    log(
+      '[WS] _handleNewMessage: ignoring message with empty roomId',
+      name: 'WS',
+    );
+    return;
+  }
+
   print('[WS] _handleNewMessage called for room ${event.roomId}');
   try {
     final message = MessageResponse.fromJson(event.payload);
-    print('[WS] Message from: ${message.senderId}, my ID: ${ref.read(authControllerProvider).valueOrNull?.id}');
+    print(
+      '[WS] Message from: ${message.senderId}, my ID: ${ref.read(authControllerProvider).valueOrNull?.id}',
+    );
 
     // If I sent this message, ignore it (already handled optimistically + REST)
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
@@ -113,7 +124,9 @@ void _handleNewMessage(Ref ref, WsEvent event) {
 
     // Check if user is currently viewing this room
     final currentRoomId = ref.read(currentOpenRoomProvider);
-    print('[WS] _handleNewMessage: room=${event.roomId}, currentOpenRoom=$currentRoomId');
+    print(
+      '[WS] _handleNewMessage: room=${event.roomId}, currentOpenRoom=$currentRoomId',
+    );
     if (event.roomId == currentRoomId) {
       // Don't increment unread, just update the preview
       print('[WS] User viewing room, updating preview only');
@@ -350,7 +363,7 @@ void _handleConnectionAccepted(Ref ref, WsEvent event) async {
   try {
     final payload = event.payload;
     final roomData = payload['room'] as Map<String, dynamic>?;
-    
+
     if (roomData == null) {
       log('connection_accepted: No room data in payload', name: 'WS');
       return;
@@ -358,30 +371,33 @@ void _handleConnectionAccepted(Ref ref, WsEvent event) async {
 
     // Parse the room data
     final room = RoomResponse.fromJson(roomData);
-    
+
     // Add the room to the chat list
     ref.read(chatListControllerProvider.notifier).upsertRoom(room);
- log('Connection accepted: requesting presence sync', name: 'WS');
-await Future.delayed(const Duration(milliseconds: 300));
-ref.read(webSocketServiceProvider).requestPresenceSync();
-log('Connection accepted: presence sync requested', name: 'WS');
-    
+    log('Connection accepted: requesting presence sync', name: 'WS');
+    await Future.delayed(const Duration(milliseconds: 300));
+    ref.read(webSocketServiceProvider).requestPresenceSync();
+    log('Connection accepted: presence sync requested', name: 'WS');
+
     // Get the other user's ID for notification
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
     final senderId = payload['senderId'] as String?;
     final receiverId = payload['receiverId'] as String?;
-    
+
     if (currentUserId != null && senderId != null && receiverId != null) {
       // Determine which user is the other person
       final otherUserId = currentUserId == senderId ? receiverId : senderId;
-      
+
       // Show notification (you might want to implement a notification service)
-      log('Connection accepted: New room ${room.id} added, other user: $otherUserId', name: 'WS');
-      
+      log(
+        'Connection accepted: New room ${room.id} added, other user: $otherUserId',
+        name: 'WS',
+      );
+
       // TODO: Show notification to user
       // Could use a notification service or update a global state for notifications
     }
-    
+
     log('Connection accepted: Room ${room.id} added to chat list', name: 'WS');
   } catch (e, st) {
     log('Error handling connection_accepted: $e, stack: $st', name: 'WS');

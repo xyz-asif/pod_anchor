@@ -1,0 +1,676 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/profile/controllers/profile_controller.dart';
+import 'package:chatbee/features/poems/controllers/poem_controller.dart';
+import 'package:chatbee/features/poems/models/poem_model.dart';
+import 'package:chatbee/core/services/cloudinary_service.dart';
+import 'package:chatbee/shared/widgets/app_snackbar.dart';
+import 'package:chatbee/shared/widgets/app_button.dart';
+import 'package:chatbee/shared/widgets/app_text_field.dart';
+import 'package:chatbee/config/theme/app_theme.dart';
+
+/// Redesigned Profile screen — Instagram-style with tabs for poems, reposts, drafts
+class ProfileScreen extends ConsumerStatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with TickerProviderStateMixin {
+  bool _isEditing = false;
+  bool _isUploadingImage = false;
+  bool _isUploadingCover = false;
+  final _nameController = TextEditingController();
+  final _bioController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _imagePicker = ImagePicker();
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _bioController.dispose();
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  /// Pick image from gallery and upload to Cloudinary for profile photo
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() => _isUploadingImage = true);
+
+      // Upload to Cloudinary
+      final cloudinaryService = ref.read(cloudinaryServiceProvider);
+      final result = await cloudinaryService.upload(
+        filePath: pickedFile.path,
+        folder: 'profile_photos',
+      );
+
+      // Update profile with new photo URL
+      await ref
+          .read(profileControllerProvider.notifier)
+          .updateProfile(photoURL: result.secureUrl);
+
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Profile photo updated',
+          type: SnackbarType.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Failed to upload image: $e',
+          type: SnackbarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  /// Pick image for cover photo
+  Future<void> _pickAndUploadCoverImage() async {
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() => _isUploadingCover = true);
+
+      // Upload to Cloudinary
+      final cloudinaryService = ref.read(cloudinaryServiceProvider);
+      final result = await cloudinaryService.upload(
+        filePath: pickedFile.path,
+        folder: 'cover_photos',
+      );
+
+      // Update profile with new cover URL
+      await ref
+          .read(profileControllerProvider.notifier)
+          .updateProfile(coverImageURL: result.secureUrl);
+
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Cover photo updated',
+          type: SnackbarType.success,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          message: 'Failed to upload cover: $e',
+          type: SnackbarType.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingCover = false);
+      }
+    }
+  }
+
+  void _startEditing() {
+    final user = ref.read(profileControllerProvider).valueOrNull;
+    if (user != null) {
+      _nameController.text = user.displayName ?? '';
+      _bioController.text = user.bio ?? '';
+    }
+    setState(() => _isEditing = true);
+  }
+
+  void _cancelEditing() {
+    setState(() => _isEditing = false);
+  }
+
+  void _saveProfile() {
+    if (!_formKey.currentState!.validate()) return;
+
+    ref
+        .read(profileControllerProvider.notifier)
+        .updateProfile(
+          displayName: _nameController.text.trim(),
+          bio: _bioController.text.trim(),
+        );
+    setState(() => _isEditing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Side effects
+    ref.listen(profileControllerProvider, (prev, next) {
+      next.whenOrNull(
+        error: (e, _) => AppSnackbar.show(
+          context,
+          message: e.toString(),
+          type: SnackbarType.error,
+        ),
+      );
+    });
+
+    final profileState = ref.watch(profileControllerProvider);
+    // Also watch authController for user data
+    final authUser = ref.watch(authControllerProvider).valueOrNull;
+    final user = profileState.valueOrNull ?? authUser;
+    final isLoading = profileState.isLoading;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.w600)),
+        centerTitle: false,
+        actions: [
+          if (!_isEditing)
+            IconButton(
+              icon: Icon(Icons.edit_rounded, size: 22.r),
+              onPressed: _startEditing,
+            )
+          else
+            IconButton(
+              icon: Icon(Icons.close_rounded, size: 22.r),
+              onPressed: _cancelEditing,
+            ),
+        ],
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+              child: Column(
+                children: [
+                  SizedBox(height: 16.h),
+
+                  // Avatar with edit button
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      GestureDetector(
+                        onTap: _isUploadingImage ? null : _pickAndUploadImage,
+                        child: CircleAvatar(
+                          radius: 50.r,
+                          backgroundColor: AppTheme.primaryLight,
+                          backgroundImage: user?.photoURL != null
+                              ? CachedNetworkImageProvider(user!.photoURL!)
+                              : null,
+                          child: user?.photoURL == null
+                              ? Icon(
+                                  Icons.person_rounded,
+                                  size: 48.r,
+                                  color: AppTheme.primaryColor,
+                                )
+                              : null,
+                        ),
+                      ),
+                      // Upload progress indicator
+                      if (_isUploadingImage)
+                        Container(
+                          width: 100.r,
+                          height: 100.r,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        )
+                      else
+                        // Edit button overlay
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _pickAndUploadImage,
+                            child: Container(
+                              padding: EdgeInsets.all(8.r),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.camera_alt_rounded,
+                                size: 20.r,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: 16.h),
+
+                  if (!_isEditing) ...[
+                    // View mode
+                    Text(
+                      user?.displayName ?? 'No name set',
+                      style: TextStyle(
+                        fontSize: 22.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textDarkColor,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      user?.email ?? '',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: AppTheme.textMediumColor,
+                      ),
+                    ),
+                    SizedBox(height: 16.h),
+                    if (user?.bio != null && user!.bio!.isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(16.r),
+                        decoration: BoxDecoration(
+                          color: AppTheme.featureBackgroundColor,
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: Text(
+                          user.bio!,
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: AppTheme.textDarkColor,
+                          ),
+                        ),
+                      ),
+                    SizedBox(height: 32.h),
+
+                    // Connections Section
+                    _buildSectionHeader('Connections'),
+                    _buildSettingsTile(
+                      icon: Icons.people_outline_rounded,
+                      title: 'Friends',
+                      onTap: () => context.push('/friends', extra: 0),
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.person_add_alt_1_rounded,
+                      title: 'Requests',
+                      onTap: () => context.push('/friends', extra: 1),
+                    ),
+                    SizedBox(height: 24.h),
+
+                    // App Settings Section
+                    _buildSectionHeader('App Settings'),
+                    _buildSettingsTile(
+                      icon: Icons.settings_rounded,
+                      title: 'Settings',
+                      onTap: () {},
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.lock_outline_rounded,
+                      title: 'Privacy',
+                      onTap: () {},
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.description_outlined,
+                      title: 'Terms and Conditions',
+                      onTap: () {},
+                    ),
+                    SizedBox(height: 32.h),
+
+                    // Sign out button
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () {
+                          ref.read(authControllerProvider.notifier).signOut();
+                          context.go('/login');
+                        },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 16.h),
+                          backgroundColor: Colors.red.withValues(alpha: 0.1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                        ),
+                        child: Text(
+                          'Sign Out',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 32.h),
+                    Text(
+                      'Version 1.0.0+1',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: AppTheme.textLightColor,
+                      ),
+                    ),
+                  ] else ...[
+                    // Edit mode
+                    SizedBox(height: 16.h),
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          AppTextField(
+                            label: 'Display Name',
+                            controller: _nameController,
+                          ),
+                          SizedBox(height: 16.h),
+                          AppTextField(
+                            label: 'Bio',
+                            controller: _bioController,
+                            maxLines: 3,
+                          ),
+                          SizedBox(height: 24.h),
+                          AppButton(
+                            text: 'Save',
+                            isLoading: isLoading,
+                            onPressed: _saveProfile,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildPoemsTab() {
+    final poemsState = ref.watch(myPoemsControllerProvider);
+
+    return poemsState.when(
+      data: (poems) => poems.isEmpty
+          ? _buildEmptyState('No poems yet', 'Your published poems will appear here')
+          : GridView.builder(
+              padding: EdgeInsets.all(16.w),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12.w,
+                mainAxisSpacing: 12.h,
+                childAspectRatio: 0.8,
+              ),
+              itemCount: poems.length,
+              itemBuilder: (context, index) {
+                final poem = poems[index];
+                return _buildPoemCard(poem);
+              },
+            ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(
+        child: Text('Error loading poems: $error'),
+      ),
+    );
+  }
+
+  Widget _buildRepostsTab() {
+    // For now, show empty state since reposts aren't implemented yet
+    return _buildEmptyState('No reposts yet', 'Reposts you share will appear here');
+  }
+
+  Widget _buildDraftsTab() {
+    final poemsState = ref.watch(myPoemsControllerProvider);
+
+    return poemsState.when(
+      data: (poems) {
+        final drafts = poems.where((poem) => poem.visibility == 'private').toList();
+        return drafts.isEmpty
+            ? _buildEmptyState('No drafts', 'Your draft poems will appear here')
+            : ListView.builder(
+                padding: EdgeInsets.all(16.w),
+                itemCount: drafts.length,
+                itemBuilder: (context, index) {
+                  final poem = drafts[index];
+                  return _buildDraftCard(poem);
+                },
+              );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(
+        child: Text('Error loading drafts: $error'),
+      ),
+    );
+  }
+
+  Widget _buildPoemCard(PoemModel poem) {
+    return GestureDetector(
+      onTap: () => context.push('/poem/${poem.id}'),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceColor,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: AppTheme.borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Poem preview (first few lines)
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: poem.coverColor.isNotEmpty
+                      ? Color(int.parse(poem.coverColor.replaceFirst('#', '0xFF')))
+                      : AppTheme.primaryLight.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      poem.title.isEmpty ? 'Untitled' : poem.title,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDarkColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 8.h),
+                    Expanded(
+                      child: Text(
+                        poem.plainText,
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: AppTheme.textMediumColor,
+                          height: 1.4,
+                        ),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Stats
+            Padding(
+              padding: EdgeInsets.all(8.w),
+              child: Row(
+                children: [
+                  Icon(Icons.favorite_border, size: 16.r, color: AppTheme.textLightColor),
+                  SizedBox(width: 4.w),
+                  Text(
+                    '${poem.likesCount}',
+                    style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor),
+                  ),
+                  SizedBox(width: 12.w),
+                  Icon(Icons.chat_bubble_outline, size: 16.r, color: AppTheme.textLightColor),
+                  SizedBox(width: 4.w),
+                  Text(
+                    '${poem.commentsCount}',
+                    style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDraftCard(PoemModel poem) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 12.h),
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.edit_document, size: 20.r, color: AppTheme.textMediumColor),
+              SizedBox(width: 8.w),
+              Text(
+                'Draft',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: AppTheme.textMediumColor,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () => context.push('/edit-poem', extra: poem),
+                child: Text(
+                  'Edit',
+                  style: TextStyle(fontSize: 14.sp, color: AppTheme.primaryColor),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            poem.title.isEmpty ? 'Untitled Poem' : poem.title,
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDarkColor,
+            ),
+          ),
+          if (poem.plainText.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            Text(
+              poem.plainText,
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: AppTheme.textMediumColor,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String title, String subtitle) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.article_outlined,
+            size: 64.r,
+            color: AppTheme.textLightColor,
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDarkColor,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: AppTheme.textMediumColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+
+  _SliverAppBarDelegate(this.tabBar);
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: AppTheme.surfaceColor,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return false;
+  }

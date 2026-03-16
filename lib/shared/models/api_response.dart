@@ -27,11 +27,14 @@ class ApiResponse {
   });
 
   factory ApiResponse.fromJson(Map<String, dynamic> json) {
+    // Phase 2 API uses "status": "success" instead of "success": true
+    final bool isSuccess = json['success'] == true || json['status'] == 'success';
+    
     return ApiResponse(
-      success: json['success'] ?? false,
+      success: isSuccess,
       statusCode: json['statusCode'],
       message: json['message'] ?? '',
-      data: json['data'] ?? [],
+      data: json['data'], // Do not default to [], let it be null if absent
     );
   }
 }
