@@ -11,6 +11,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/social/widgets/comment_bottom_sheet.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
@@ -134,6 +135,13 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          if (ref.watch(authControllerProvider).valueOrNull?.id == poem.author.id)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => context.push('/editor', extra: poem),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 8.h),

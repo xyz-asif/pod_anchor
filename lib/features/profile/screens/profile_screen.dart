@@ -58,7 +58,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final user = ref.read(authControllerProvider).valueOrNull;
     if (user == null) return;
     try {
-      final profile = await ref.read(followRepoProvider).getPublicProfile(user.id);
+      final profile = await ref
+          .read(followRepoProvider)
+          .getPublicProfile(user.id);
       if (mounted) {
         setState(() {
           _followersCount = profile.followersCount;
@@ -226,7 +228,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                 ? null
                                 : _pickAndUploadCoverImage,
                             child: Container(
-                              height: 220.h,
+                              height: 200.h,
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: AppTheme.featureBackgroundColor,
@@ -259,18 +261,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                           // Gradient overlay
                           Container(
                             height: 220.h,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.black.withValues(alpha: 0.3),
-                                  Colors.transparent,
-                                  AppTheme.surfaceColor.withValues(alpha: 0.8),
-                                  AppTheme.surfaceColor,
-                                ],
-                              ),
-                            ),
+                            // decoration: BoxDecoration(
+                            //   gradient: LinearGradient(
+                            //     begin: Alignment.topCenter,
+                            //     end: Alignment.bottomCenter,
+                            //     colors: [
+                            //       Colors.black.withValues(alpha: 0.3),
+                            //       Colors.transparent,
+                            //       AppTheme.surfaceColor.withValues(alpha: 0.8),
+                            //       AppTheme.surfaceColor,
+                            //     ],
+                            //   ),
+                            // ),
                           ),
                           // Cover photo upload indicator
                           if (_isUploadingCover)
@@ -425,7 +427,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                           ),
                                           child: _StatItem(
                                             label: 'Followers',
-                                            value: _followersCount ?? user.followersCount,
+                                            value:
+                                                _followersCount ??
+                                                user.followersCount,
                                           ),
                                         ),
                                         GestureDetector(
@@ -434,7 +438,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                           ),
                                           child: _StatItem(
                                             label: 'Following',
-                                            value: _followingCount ?? user.followingCount,
+                                            value:
+                                                _followingCount ??
+                                                user.followingCount,
                                           ),
                                         ),
                                       ],
@@ -465,13 +471,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                 color: AppTheme.textDarkColor,
                               ),
                             ),
-                            Text(
-                              '@${user.username ?? 'username'}',
-                              style: TextStyle(
-                                fontSize: 15.sp,
-                                color: AppTheme.textMediumColor,
-                              ),
-                            ),
+                            // Text(
+                            //   '@${user.username ?? 'username'}',
+                            //   style: TextStyle(
+                            //     fontSize: 15.sp,
+                            //     color: AppTheme.textMediumColor,
+                            //   ),
+                            // ),
                             if (user.bio?.isNotEmpty ?? false) ...[
                               SizedBox(height: 10.h),
                               Text(

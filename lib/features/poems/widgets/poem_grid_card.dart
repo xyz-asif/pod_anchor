@@ -26,6 +26,7 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
   late bool _isReposted;
   late int _repostCount;
   late QuillController _quillController;
+  bool _isLong = false;
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
         selection: const TextSelection.collapsed(offset: 0),
         readOnly: true,
       );
+      _isLong = doc.toPlainText().split('\n').length > 14 || doc.toPlainText().length > 400;
     } catch (_) {
       _quillController = QuillController.basic();
     }
@@ -70,8 +72,10 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
           selection: const TextSelection.collapsed(offset: 0),
           readOnly: true,
         );
+        _isLong = doc.toPlainText().split('\n').length > 14 || doc.toPlainText().length > 400;
       } catch (_) {
         _quillController = QuillController.basic();
+        _isLong = false;
       }
     }
   }
@@ -190,38 +194,72 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
                     SizedBox(height: 4.h),
                     // Body
                     Expanded(
-                      child: IgnorePointer(
-                        child: ShaderMask(
-                          shaderCallback: (Rect bounds) {
-                             return LinearGradient(
-                               begin: Alignment.topCenter,
-                               end: Alignment.bottomCenter,
-                               colors: [Colors.white, Colors.white.withValues(alpha: 0.0)],
-                               stops: const [0.7, 1.0],
-                             ).createShader(bounds);
-                           },
-                          blendMode: BlendMode.dstIn,
-                          child: QuillEditor.basic(
-                            controller: _quillController,
-                            config: QuillEditorConfig(
-                              padding: EdgeInsets.zero,
-                              scrollPhysics: const NeverScrollableScrollPhysics(),
-                              customStyles: DefaultStyles(
-                                paragraph: DefaultTextBlockStyle(
-                                  GoogleFonts.lato(
-                                    fontSize: 12.sp,
-                                    color: AppTheme.textDarkColor.withValues(alpha: 0.7),
-                                    height: 1.2,
+                      child: Stack(
+                        children: [
+                          IgnorePointer(
+                            child: ShaderMask(
+                              shaderCallback: (Rect bounds) {
+                                return LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.white,
+                                    _isLong ? Colors.white.withValues(alpha: 0.0) : Colors.white
+                                  ],
+                                  stops: const [0.7, 1.0],
+                                ).createShader(bounds);
+                              },
+                              blendMode: BlendMode.dstIn,
+                              child: QuillEditor.basic(
+                                controller: _quillController,
+                                config: QuillEditorConfig(
+                                  padding: EdgeInsets.zero,
+                                  scrollPhysics: const NeverScrollableScrollPhysics(),
+                                  customStyles: DefaultStyles(
+                                    paragraph: DefaultTextBlockStyle(
+                                      GoogleFonts.lato(
+                                        fontSize: 12.sp,
+                                        color: AppTheme.textDarkColor.withValues(alpha: 0.7),
+                                        height: 1.2,
+                                      ),
+                                      const HorizontalSpacing(0, 0),
+                                      const VerticalSpacing(0, 0),
+                                      const VerticalSpacing(0, 0),
+                                      null,
+                                    ),
                                   ),
-                                  const HorizontalSpacing(0, 0),
-                                  const VerticalSpacing(0, 0),
-                                  const VerticalSpacing(0, 0),
-                                  null,
                                 ),
                               ),
                             ),
                           ),
-                        ),
+                          if (_isLong)
+                            Positioned(
+                              bottom: 2,
+                              right: 2,
+                              child: Container(
+                                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.surfaceColor.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.1),
+                                      blurRadius: 2,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  'more...',
+                                  style: TextStyle(
+                                    fontSize: 10.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],

@@ -7,7 +7,7 @@ part of 'feed_controller.dart';
 // **************************************************************************
 
 String _$homeFeedControllerHash() =>
-    r'e8e3a292e59ab17c472ede15e5e62438252f0fd2';
+    r'f856a2d3f1f522d6b46eae1ee939d7109dd2935b';
 
 /// See also [HomeFeedController].
 @ProviderFor(HomeFeedController)
@@ -24,7 +24,7 @@ final homeFeedControllerProvider =
 
 typedef _$HomeFeedController = AsyncNotifier<List<PoemModel>>;
 String _$exploreFeedControllerHash() =>
-    r'ed62d786f47570e2896a0bccee11f173847671a9';
+    r'08592cf3d776fe9a97c7277f4dab548cb5754a9e';
 
 /// See also [ExploreFeedController].
 @ProviderFor(ExploreFeedController)
@@ -40,5 +40,22 @@ final exploreFeedControllerProvider =
     );
 
 typedef _$ExploreFeedController = AsyncNotifier<List<PoemModel>>;
+String _$audioFeedControllerHash() =>
+    r'2f8007af94e671ba1fa96d28ae36d0f59fa1559c';
+
+/// See also [AudioFeedController].
+@ProviderFor(AudioFeedController)
+final audioFeedControllerProvider =
+    AsyncNotifierProvider<AudioFeedController, List<PoemModel>>.internal(
+      AudioFeedController.new,
+      name: r'audioFeedControllerProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$audioFeedControllerHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$AudioFeedController = AsyncNotifier<List<PoemModel>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
