@@ -10,26 +10,32 @@ part 'feed_controller.g.dart';
 class HomeFeedController extends _$HomeFeedController {
   bool _hasMore = true;
   bool _isLoadingMore = false;
-  int _currentOffset = 0;
+  String? _currentCursor;
 
   @override
   FutureOr<List<PoemModel>> build() async {
-    _currentOffset = 0;
+    _currentCursor = null;
     final page = await ref
         .read(feedRepoProvider)
-        .getHomeFeed(limit: 20, offset: _currentOffset);
+        .getHomeFeed(limit: 20, before: _currentCursor);
     _hasMore = page.hasMore;
+    if (page.poems.isNotEmpty) {
+      _currentCursor = page.poems.last.id;
+    }
     return page.poems;
   }
 
   Future<void> refresh() async {
-    _currentOffset = 0;
+    _currentCursor = null;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final page = await ref
           .read(feedRepoProvider)
-          .getHomeFeed(limit: 20, offset: _currentOffset);
+          .getHomeFeed(limit: 20, before: _currentCursor);
       _hasMore = page.hasMore;
+      if (page.poems.isNotEmpty) {
+        _currentCursor = page.poems.last.id;
+      }
       return page.poems;
     });
   }
@@ -40,11 +46,13 @@ class HomeFeedController extends _$HomeFeedController {
     if (current == null || current.isEmpty) return;
     _isLoadingMore = true;
     try {
-      _currentOffset += 20;
       final page = await ref
           .read(feedRepoProvider)
-          .getHomeFeed(limit: 20, offset: _currentOffset);
+          .getHomeFeed(limit: 20, before: _currentCursor);
       _hasMore = page.hasMore;
+      if (page.poems.isNotEmpty) {
+        _currentCursor = page.poems.last.id;
+      }
       state = AsyncValue.data([...current, ...page.poems]);
     } finally {
       _isLoadingMore = false;

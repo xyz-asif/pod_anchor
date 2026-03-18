@@ -123,10 +123,7 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     try {
       final isNowFollowing = await ref
           .read(followRepoProvider)
-          .toggleFollow(
-            widget.userId,
-            currentlyFollowing: prevFollowing,
-          );
+          .toggleFollow(widget.userId);
       setState(() {
         // Only change count if the state actually flipped
         int newCount = _profile!.followersCount;

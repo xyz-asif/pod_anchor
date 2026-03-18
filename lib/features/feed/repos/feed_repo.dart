@@ -11,8 +11,9 @@ class FeedRepo {
   final ApiClient apiClient;
   FeedRepo({required this.apiClient});
 
-  Future<PoemsPage> getHomeFeed({int limit = 20, int offset = 0}) async {
-    final query = <String, dynamic>{'limit': limit, 'offset': offset};
+  Future<PoemsPage> getHomeFeed({int limit = 20, String? before}) async {
+    final query = <String, dynamic>{'limit': limit};
+    if (before != null) query['before'] = before;
     final response = await apiClient.get(
       ApiEndpoints.homeFeed,
       queryParameters: query,

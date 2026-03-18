@@ -11,18 +11,12 @@ class FollowRepo {
   final ApiClient apiClient;
   FollowRepo({required this.apiClient});
 
-  /// Toggle follow/unfollow. 
-  /// Since the backend has separate endpoints, we need to know the current state.
-  /// If isFollowing is provided, we use it to decide.
-  Future<bool> toggleFollow(String userId, {bool currentlyFollowing = false}) async {
-    // The backend POST endpoint follows, and returns 409 if already following.
-    // Unfollow should trigger a DELETE request to the same endpoint.
-    if (currentlyFollowing) {
-      await apiClient.delete(ApiEndpoints.userFollow(userId));
-    } else {
-      await apiClient.post(ApiEndpoints.userFollow(userId));
-    }
-    return !currentlyFollowing;
+  /// Toggle follow.
+  /// The backend returns {"following": true/false} — use that to know the new state.
+  Future<bool> toggleFollow(String userId) async {
+    final response = await apiClient.post(ApiEndpoints.userFollow(userId));
+    final data = response.data as Map<String, dynamic>;
+    return data['following'] as bool? ?? false;
   }
 
   /// Get another user's public profile including isFollowedByMe.
