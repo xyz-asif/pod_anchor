@@ -320,20 +320,53 @@ void _handleProfileUpdated(Ref ref, WsEvent event) {
 
 /// Typing state for a specific room.
 /// Maps userId → true/false (typing or not).
+///
+/// Safety: Auto-clears typing state after 5 seconds if no new
+/// typing_start arrives — handles force-close / crash scenarios.
 @riverpod
 class TypingController extends _$TypingController {
+  final Map<String, Timer> _typingTimers = {};
+
   @override
   Map<String, bool> build(String roomId) {
+    ref.onDispose(() {
+      for (final timer in _typingTimers.values) {
+        timer.cancel();
+      }
+      _typingTimers.clear();
+    });
     return {};
   }
 
   /// Called by wsEventHandler when a remote typing event arrives.
   void handleRemoteTyping(String userId, bool isTyping) {
     final current = Map<String, bool>.from(state);
+
+    // Cancel existing timer for this user
+    _typingTimers[userId]?.cancel();
+
     if (isTyping) {
       current[userId] = true;
+
+      // Safety: prevent unbounded timer map growth (defensive, unlikely in practice)
+      if (_typingTimers.length > 20) {
+        for (final timer in _typingTimers.values) {
+          timer.cancel();
+        }
+        _typingTimers.clear();
+        current.clear();
+      }
+
+      // Auto-clear after 5 seconds if no new typing_start arrives
+      _typingTimers[userId] = Timer(const Duration(seconds: 5), () {
+        final updated = Map<String, bool>.from(state);
+        updated.remove(userId);
+        state = updated;
+        _typingTimers.remove(userId);
+      });
     } else {
       current.remove(userId);
+      _typingTimers.remove(userId);
     }
     state = current;
   }

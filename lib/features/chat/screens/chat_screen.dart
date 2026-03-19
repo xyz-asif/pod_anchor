@@ -7,6 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chatbee/features/chat/controllers/message_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
@@ -27,6 +28,13 @@ import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/chat/controllers/chat_state_controller.dart';
 import 'package:chatbee/features/chat/models/reply_to.dart';
+
+/// Formats a message timestamp to local HH:MM, handling UTC-safety.
+String formatMessageTime(DateTime? dt) {
+  if (dt == null) return '';
+  final local = dt.isUtc ? dt.toLocal() : dt;
+  return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+}
 
 /// Chat screen — message list with input bar.
 ///
@@ -250,6 +258,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   void _onSendMessageRequested(String content) {
     if (content.isEmpty) return;
+    HapticFeedback.lightImpact();
 
     final inputState = ref.read(chatInputControllerProvider(widget.roomId));
 
@@ -266,7 +275,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _clearPreview();
   }
 
-  void _sendGifMessage(GiphyGif gif) {
+  Future<void> _sendGifMessage(GiphyGif gif) async {
+    HapticFeedback.lightImpact();
     try {
       final metadata = MediaMetadata(
         fileName: gif.title,
@@ -274,7 +284,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       );
       final inputState = ref.read(chatInputControllerProvider(widget.roomId));
 
-      ref
+      await ref
           .read(messageControllerProvider(widget.roomId).notifier)
           .sendMessage(
             gif.url,
@@ -284,6 +294,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           );
       _clearPreview();
     } catch (e) {
+      HapticFeedback.heavyImpact();
       if (mounted) {
         AppSnackbar.show(
           context,
@@ -315,10 +326,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _sendMediaMessage(picked, MessageType.file);
   }
 
-  void _sendMediaMessage(PickedMedia picked, MessageType type) {
+  Future<void> _sendMediaMessage(PickedMedia picked, MessageType type) async {
+    HapticFeedback.lightImpact();
     try {
       final inputState = ref.read(chatInputControllerProvider(widget.roomId));
-      ref
+      await ref
           .read(messageControllerProvider(widget.roomId).notifier)
           .sendMediaMessage(
             filePath: picked.filePath,
@@ -330,10 +342,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           );
       _clearPreview();
     } catch (e) {
+      HapticFeedback.heavyImpact();
       if (mounted) {
+        final typeLabel = type == MessageType.image ? 'photo'
+            : type == MessageType.video ? 'video'
+            : type == MessageType.audio ? 'voice message'
+            : 'file';
         AppSnackbar.show(
           context,
-          message: 'Failed to send media: $e',
+          message: 'Failed to send $typeLabel: ${e.toString().replaceAll('Exception: ', '')}',
           type: SnackbarType.error,
         );
       }
@@ -523,7 +540,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   radius: 20.r,
                   backgroundColor: AppTheme.borderColor,
                   backgroundImage: photoURL != null
-                      ? NetworkImage(photoURL)
+                      ? CachedNetworkImageProvider(photoURL)
                       : null,
                   child: photoURL == null
                       ? Icon(Icons.person, color: Colors.white, size: 20.r)
@@ -1099,69 +1116,89 @@ class _MessageBubble extends StatelessWidget {
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Padding(
           padding: EdgeInsets.only(bottom: hasReactions ? 12.h : 0),
-          child: GestureDetector(
-            onLongPress: onLongPress,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  margin: EdgeInsets.only(
-                    top: 2.h,
-                    bottom: 2.h,
-                    left: isMe ? 48.w : 0,
-                    right: isMe ? 0 : 48.w,
-                  ),
-                  child: MediaBubble(
-                    message: message,
-                    isMe: isMe,
-                    senderName: isMe ? currentUserName : otherParticipantName,
-                    senderPhotoUrl: isMe ? currentUserPhotoUrl : otherParticipantPhotoUrl,
-                  ),
+          child: Dismissible(
+            key: ValueKey('swipe_${message.id}'),
+            direction: isMe ? DismissDirection.endToStart : DismissDirection.startToEnd,
+            confirmDismiss: (direction) async {
+              if (onReply != null) onReply!();
+              return false;
+            },
+            background: Container(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              child: Container(
+                padding: EdgeInsets.all(8.r),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
-                // Floating reaction pill
-                if (hasReactions)
-                  Positioned(
-                    bottom: -10.h,
-                    left: isMe ? null : 12.w,
-                    right: isMe ? 12.w : null,
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 6.w,
-                        vertical: 2.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        borderRadius: BorderRadius.circular(12.r),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                        border: Border.all(
-                          color: AppTheme.borderColor.withValues(alpha: 0.3),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: message.reactions.values.toSet().map((emoji) {
-                          final count = message.reactions.values
-                              .where((e) => e == emoji)
-                              .length;
-                          return Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 2.w),
-                            child: Text(
-                              count > 1 ? '$emoji $count' : emoji,
-                              style: TextStyle(fontSize: 14.sp),
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                child: Icon(Icons.reply_rounded, color: AppTheme.primaryColor, size: 24.sp),
+              ),
+            ),
+            child: GestureDetector(
+              onLongPress: onLongPress,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    margin: EdgeInsets.only(
+                      top: 2.h,
+                      bottom: 2.h,
+                      left: isMe ? 48.w : 0,
+                      right: isMe ? 0 : 48.w,
+                    ),
+                    child: MediaBubble(
+                      message: message,
+                      isMe: isMe,
+                      senderName: isMe ? currentUserName : otherParticipantName,
+                      senderPhotoUrl: isMe ? currentUserPhotoUrl : otherParticipantPhotoUrl,
                     ),
                   ),
-              ],
+                  // Floating reaction pill
+                  if (hasReactions)
+                    Positioned(
+                      bottom: -10.h,
+                      left: isMe ? null : 12.w,
+                      right: isMe ? 12.w : null,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6.w,
+                          vertical: 2.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          borderRadius: BorderRadius.circular(12.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                          border: Border.all(
+                            color: AppTheme.borderColor.withValues(alpha: 0.3),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: message.reactions.values.toSet().map((emoji) {
+                            final count = message.reactions.values
+                                .where((e) => e == emoji)
+                                .length;
+                            return Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 2.w),
+                              child: Text(
+                                count > 1 ? '$emoji $count' : emoji,
+                                style: TextStyle(fontSize: 14.sp),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1219,7 +1256,7 @@ class _MessageBubble extends StatelessWidget {
                       : EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
                   decoration: BoxDecoration(
                     color: isDeleted
-                        ? Colors.grey.shade100
+                        ? AppTheme.borderColor
                         : isMe
                         ? AppTheme.primaryDark
                         : AppTheme.featureBackgroundColor,
@@ -1327,7 +1364,7 @@ class _MessageBubble extends StatelessWidget {
                                         ),
                                       if (message.createdAt != null)
                                         Text(
-                                          '${message.createdAt!.hour.toString().padLeft(2, '0')}:${message.createdAt!.minute.toString().padLeft(2, '0')}',
+                                          formatMessageTime(message.createdAt),
                                           style: TextStyle(
                                             fontSize: 10.sp,
                                             color: isMe

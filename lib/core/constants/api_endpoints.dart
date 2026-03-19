@@ -94,6 +94,9 @@ class ApiEndpoints {
   // ── WebSocket ──
   static const String webSocket = '/chat/ws';
   static const String chatDisconnect = '/chat/disconnect';
+  
+  /// ⚠️ SECURITY: Token is in the URL query string. NEVER log the output of this method.
+  /// Long-term: migrate to first-message auth to keep token out of URLs.
   static String webSocketUrl(String token) {
     final wsBase = baseUrl
         .replaceFirst('http://', 'ws://')

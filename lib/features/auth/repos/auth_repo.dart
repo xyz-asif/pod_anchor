@@ -1,9 +1,12 @@
 import 'dart:developer';
+import 'dart:io' show SocketException;
+import 'dart:async' show TimeoutException;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/network/api_client.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
+import 'package:chatbee/core/errors/failures.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_repo.g.dart';
@@ -30,45 +33,60 @@ class AuthRepo {
     // Ensure initialization
     await initialize();
 
-    // 1️⃣ Show Google Sign-In UI
-    print('🔐 Starting Google Sign-In...');
-    final googleUser = await _googleSignIn.authenticate();
+    try {
+      // 1️⃣ Show Google Sign-In UI
+      log('Starting Google Sign-In', name: 'AUTH');
+      final googleUser = await _googleSignIn.authenticate();
 
-    // 2️⃣ Get authentication tokens
-    final googleAuth = googleUser.authentication;
-    print('✅ Google authentication successful');
+      // 2️⃣ Get authentication tokens
+      final googleAuth = await googleUser.authentication;
+      log('Google authentication successful', name: 'AUTH');
 
-    // 3️⃣ Create Firebase credential
-    final credential = GoogleAuthProvider.credential(
-      idToken: googleAuth.idToken,
-    );
+      // 3️⃣ Create Firebase credential
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
 
-    // 4️⃣ Sign into Firebase
-    final userCredential = await _firebaseAuth.signInWithCredential(credential);
-    print('✅ Firebase sign-in successful');
+      // 4️⃣ Sign into Firebase
+      final userCredential = await _firebaseAuth.signInWithCredential(credential);
+      log('Firebase sign-in successful', name: 'AUTH');
 
-    // 5️⃣ Get Firebase ID token
-    final idToken = await userCredential.user?.getIdToken();
+      // 5️⃣ Get Firebase ID token
+      final idToken = await userCredential.user?.getIdToken();
 
-    if (idToken == null) {
-      throw Exception("Failed to get Firebase ID token");
+      if (idToken == null) {
+        throw Exception("Failed to get Firebase ID token");
+      }
+      log('Firebase ID token obtained: ${idToken.substring(0, 20)}...', name: 'AUTH');
+
+      // 6️⃣ Attach token to API client
+      log('Saving token to API client', name: 'AUTH');
+      await apiClient.setToken(idToken);
+      log('Token set on API client', name: 'AUTH');
+
+      // 7️⃣ Fetch user profile (backend auto-creates if new)
+      log('Fetching user profile', name: 'AUTH');
+      final response = await apiClient.get(ApiEndpoints.usersMe);
+      final user = UserModel.fromJson(response.data);
+
+      log("Signed in as: ${user.displayName ?? user.email}", name: "AUTH");
+      log('User signed in successfully', name: 'AUTH');
+
+      return user;
+    } on SignInCancelledException {
+      rethrow;
+    } on SocketException {
+      throw const NetworkFailure('No internet connection. Please check your network and try again.');
+    } on TimeoutException {
+      throw const NetworkFailure('Connection timed out. Please try again.');
+    } catch (e) {
+      if (e.toString().contains('canceled') || 
+          e.toString().contains('cancelled') ||
+          e.toString().contains('sign_in_canceled')) {
+        throw const SignInCancelledException();
+      }
+      rethrow;
     }
-    print('✅ Firebase ID token obtained: ${idToken.substring(0, 20)}...');
-
-    // 6️⃣ Attach token to API client
-    print('💾 Saving token to API client...');
-    await apiClient.setToken(idToken);
-    print('✅ Token set on API client');
-
-    // 7️⃣ Fetch user profile (backend auto-creates if new)
-    print('👤 Fetching user profile...');
-    final response = await apiClient.get(ApiEndpoints.usersMe);
-    final user = UserModel.fromJson(response.data);
-
-    log("Signed in as: ${user.displayName ?? user.email}", name: "AUTH");
-    print('✅ User signed in successfully');
-
-    return user;
   }
 
   /// Get Firebase ID token

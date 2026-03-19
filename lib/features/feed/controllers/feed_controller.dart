@@ -1,6 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/feed/repos/feed_repo.dart';
+import 'package:chatbee/core/providers/auth_provider.dart';
 
 part 'feed_controller.g.dart';
 
@@ -14,6 +15,7 @@ class HomeFeedController extends _$HomeFeedController {
 
   @override
   FutureOr<List<PoemModel>> build() async {
+    ref.watch(userSessionProvider);
     _currentCursor = null;
     final page = await ref
         .read(feedRepoProvider)
@@ -73,6 +75,7 @@ class ExploreFeedController extends _$ExploreFeedController {
 
   @override
   FutureOr<List<PoemModel>> build() async {
+    ref.watch(userSessionProvider);
     _currentOffset = 0;
     final page = await ref
         .read(feedRepoProvider)
@@ -147,6 +150,7 @@ class AudioFeedController extends _$AudioFeedController {
 
   @override
   FutureOr<List<PoemModel>> build() async {
+    ref.watch(userSessionProvider);
     _currentOffset = 0;
     final page = await ref
         .read(feedRepoProvider)

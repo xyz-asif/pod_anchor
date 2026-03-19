@@ -1,6 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/repos/poem_repo.dart';
+import 'package:chatbee/core/providers/auth_provider.dart';
 
 part 'poem_controller.g.dart';
 
@@ -12,6 +13,7 @@ class MyPoemsController extends _$MyPoemsController {
 
   @override
   FutureOr<List<PoemModel>> build() async {
+    ref.watch(userSessionProvider);
     final page = await ref.read(poemRepoProvider).getMyPoems(limit: 20);
     _hasMore = page.hasMore;
     return page.poems;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -90,9 +91,10 @@ class _LoginViewState extends ConsumerState<LoginView> {
                 child: ElevatedButton.icon(
                   onPressed: isLoading
                       ? null
-                      : () => ref
-                            .read(authControllerProvider.notifier)
-                            .signInWithGoogle(),
+                      : () {
+                          HapticFeedback.mediumImpact();
+                          ref.read(authControllerProvider.notifier).signInWithGoogle();
+                        },
                   icon: isLoading
                       ? SizedBox(
                           width: 20.r,

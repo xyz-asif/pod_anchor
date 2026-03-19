@@ -28,7 +28,7 @@ final wsEventHandlerProvider = StreamProvider<WsEvent>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef WsEventHandlerRef = StreamProviderRef<WsEvent>;
-String _$typingControllerHash() => r'203d034a882c805abfd35dd067dd93b77e1940e9';
+String _$typingControllerHash() => r'0b7b46847792d32369acfdcf5a2e2174192d0ef2';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -61,6 +61,9 @@ abstract class _$TypingController
 /// Typing state for a specific room.
 /// Maps userId → true/false (typing or not).
 ///
+/// Safety: Auto-clears typing state after 5 seconds if no new
+/// typing_start arrives — handles force-close / crash scenarios.
+///
 /// Copied from [TypingController].
 @ProviderFor(TypingController)
 const typingControllerProvider = TypingControllerFamily();
@@ -68,16 +71,25 @@ const typingControllerProvider = TypingControllerFamily();
 /// Typing state for a specific room.
 /// Maps userId → true/false (typing or not).
 ///
+/// Safety: Auto-clears typing state after 5 seconds if no new
+/// typing_start arrives — handles force-close / crash scenarios.
+///
 /// Copied from [TypingController].
 class TypingControllerFamily extends Family<Map<String, bool>> {
   /// Typing state for a specific room.
   /// Maps userId → true/false (typing or not).
+  ///
+  /// Safety: Auto-clears typing state after 5 seconds if no new
+  /// typing_start arrives — handles force-close / crash scenarios.
   ///
   /// Copied from [TypingController].
   const TypingControllerFamily();
 
   /// Typing state for a specific room.
   /// Maps userId → true/false (typing or not).
+  ///
+  /// Safety: Auto-clears typing state after 5 seconds if no new
+  /// typing_start arrives — handles force-close / crash scenarios.
   ///
   /// Copied from [TypingController].
   TypingControllerProvider call(String roomId) {
@@ -109,12 +121,18 @@ class TypingControllerFamily extends Family<Map<String, bool>> {
 /// Typing state for a specific room.
 /// Maps userId → true/false (typing or not).
 ///
+/// Safety: Auto-clears typing state after 5 seconds if no new
+/// typing_start arrives — handles force-close / crash scenarios.
+///
 /// Copied from [TypingController].
 class TypingControllerProvider
     extends
         AutoDisposeNotifierProviderImpl<TypingController, Map<String, bool>> {
   /// Typing state for a specific room.
   /// Maps userId → true/false (typing or not).
+  ///
+  /// Safety: Auto-clears typing state after 5 seconds if no new
+  /// typing_start arrives — handles force-close / crash scenarios.
   ///
   /// Copied from [TypingController].
   TypingControllerProvider(String roomId)

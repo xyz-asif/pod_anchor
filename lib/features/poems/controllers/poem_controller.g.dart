@@ -6,7 +6,7 @@ part of 'poem_controller.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$myPoemsControllerHash() => r'dfa540c8249b27eb3984d7eeed222fae5678910e';
+String _$myPoemsControllerHash() => r'e78c7eecee032c149e17d2d3439f74ec2658386a';
 
 /// My poems list — keepAlive so it persists across navigation
 ///

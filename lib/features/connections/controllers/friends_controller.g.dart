@@ -6,7 +6,7 @@ part of 'friends_controller.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$friendsControllerHash() => r'c2821f8e3916c06151ddca2bfd40d1bad7840fb7';
+String _$friendsControllerHash() => r'226876a7895acd9b40b8be14b4063f7c3991dd77';
 
 /// Manages the accepted friends list, enriched with user display info.
 ///

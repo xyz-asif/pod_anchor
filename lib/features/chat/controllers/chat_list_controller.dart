@@ -3,6 +3,7 @@ import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/core/providers/auth_provider.dart';
 
 part 'chat_list_controller.g.dart';
 
@@ -25,6 +26,7 @@ class ChatListController extends _$ChatListController {
 
   @override
   FutureOr<List<RoomResponse>> build() async {
+    ref.watch(userSessionProvider);
     ref.onDispose(() => _isDisposed = true);
 
     final authState = await ref.watch(authControllerProvider.future);

@@ -7,9 +7,9 @@ part of 'notification_controller.dart';
 // **************************************************************************
 
 String _$notificationControllerHash() =>
-    r'76970358043d44a383f5017b3d7fc14043d83af4';
+    r'dba6223edb65b11844d23c4081d078ea82f4c192';
 
-/// Manages the notification list and unread badge count.
+/// Manages the notification list and unread badge count.5
 ///
 /// Copied from [NotificationController].
 @ProviderFor(NotificationController)
@@ -29,7 +29,7 @@ final notificationControllerProvider =
 
 typedef _$NotificationController = AsyncNotifier<List<NotificationModel>>;
 String _$unreadNotificationCountHash() =>
-    r'87741c9eec853d2f9d357d11a6b8edd97f45d375';
+    r'4484ae540c876fd4dfa8dfbc5c23c6f6ec518902';
 
 /// Separate provider for badge count so it can be watched independently
 /// without rebuilding the full notification list.

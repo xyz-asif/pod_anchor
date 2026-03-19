@@ -1,3 +1,5 @@
+import 'dart:developer';
+import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/core/network/api_client.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
@@ -22,7 +24,7 @@ class AuthController extends _$AuthController {
   /// Sign in with Google.
   Future<void> signInWithGoogle() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
+    try {
       final user = await ref.read(authRepoProvider).signInWithGoogle();
 
       // Connect WebSocket after successful sign-in
@@ -42,8 +44,13 @@ class AuthController extends _$AuthController {
       final notifRepo = ref.read(notificationRepoProvider);
       notifService.registerTokenWithBackend(notifRepo);
 
-      return user;
-    });
+      state = AsyncValue.data(user);
+    } on SignInCancelledException {
+      // User cancelled — reset to idle, no error shown
+      state = const AsyncValue.data(null);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
   }
 
   /// Refresh user profile from backend.
@@ -61,6 +68,9 @@ class AuthController extends _$AuthController {
 
     // Update auth state so the router redirects to /login
     ref.read(authNotifierProvider).logout();
+
+    // Cascade-clear all user-scoped providers in one line
+    ref.read(userSessionProvider.notifier).state++;
   }
 
   /// Check if user is signed in and restore session.
@@ -73,24 +83,29 @@ class AuthController extends _$AuthController {
 
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      // 1. Refresh token if Firebase session exists
-      if (repo.isSignedIn) {
-        await repo.refreshToken();
-      }
-      
-      // 2. Fetch profile from backend (uses token currently in ApiClient)
-      final user = await repo.getMyProfile();
+      try {
+        // 1. Refresh token if Firebase session exists
+        if (repo.isSignedIn) {
+          await repo.refreshToken();
+        }
+        
+        // 2. Fetch profile from backend (uses token currently in ApiClient)
+        final user = await repo.getMyProfile();
 
-      // 3. Reconnect WebSocket using existing token
-      final token = repo.isSignedIn 
-          ? await repo.getIdToken() 
-          : apiClient.currentToken;
-          
-      if (token != null) {
-        ref.read(webSocketServiceProvider).connect(token);
-      }
+        // 3. Reconnect WebSocket using existing token
+        final token = repo.isSignedIn 
+            ? await repo.getIdToken() 
+            : apiClient.currentToken;
+            
+        if (token != null) {
+          ref.read(webSocketServiceProvider).connect(token);
+        }
 
-      return user;
+        return user;
+      } catch (e) {
+        log('Session restore failed: $e', name: 'AUTH');
+        rethrow;
+      }
     });
   }
 

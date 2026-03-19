@@ -109,6 +109,7 @@ class WsEvent {
 ///   Firebase token without fully disconnecting.
 class WebSocketService {
   WebSocketChannel? _channel;
+  StreamSubscription? _channelSubscription;
   final _eventController = StreamController<WsEvent>.broadcast();
 
   Timer? _reconnectTimer;
@@ -224,6 +225,8 @@ class WebSocketService {
   /// Intentional disconnect — keeps token for next connectIfNeeded.
   void disconnect() {
     _intentionalDisconnect = true;
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = null;
     _closeChannel(keepToken: true);
   }
 
@@ -251,6 +254,7 @@ class WebSocketService {
 
   void dispose() {
     _connectivitySubscription?.cancel();
+    _channelSubscription?.cancel();
     disconnect();
     _eventController.close();
   }
@@ -291,7 +295,7 @@ class WebSocketService {
         _handleDisconnect();
       });
 
-      _channel!.stream.listen(
+      _channelSubscription = _channel!.stream.listen(
         _handleRawMessage,
         onError: (Object error) {
           log('[WS] Stream error: $error', name: 'WS');
@@ -468,6 +472,9 @@ class WebSocketService {
     _presenceSyncTimer?.cancel();
     _pingTimer?.cancel();
     _cancelPongTimeout();
+
+    _channelSubscription?.cancel();
+    _channelSubscription = null;
 
     try { _channel?.sink.close(); } catch (_) {}
     _channel      = null;

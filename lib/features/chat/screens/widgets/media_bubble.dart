@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +10,15 @@ import 'package:chatbee/features/chat/models/message_type.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/chat/screens/widgets/full_screen_image_viewer.dart';
 import 'package:chatbee/features/chat/screens/widgets/full_screen_video_player.dart';
+import 'package:chatbee/features/chat/screens/chat_screen.dart' show formatMessageTime;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 
-final _dio = Dio();
+final _dio = Dio(BaseOptions(
+  connectTimeout: const Duration(seconds: 30),
+  receiveTimeout: const Duration(minutes: 5),
+));
 
 /// Wraps media content in a standardized bubble format.
 class MediaBubble extends StatelessWidget {
@@ -307,7 +312,7 @@ class _ImageBubbleState extends State<_ImageBubble> {
                 children: [
                   if (widget.message.createdAt != null)
                     Text(
-                      '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                      formatMessageTime(widget.message.createdAt),
                       style: TextStyle(
                         fontSize: 10.sp,
                         color: Colors.white70,
@@ -599,7 +604,7 @@ class _VideoBubbleState extends State<_VideoBubble> {
                 children: [
                   if (widget.message.createdAt != null)
                     Text(
-                      '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                      formatMessageTime(widget.message.createdAt),
                       style: TextStyle(
                         fontSize: 10.sp,
                         color: Colors.white70,
@@ -719,7 +724,7 @@ class _GifBubble extends StatelessWidget {
               children: [
                 if (message.createdAt != null)
                   Text(
-                    '${message.createdAt!.hour.toString().padLeft(2, '0')}:${message.createdAt!.minute.toString().padLeft(2, '0')}',
+                    formatMessageTime(message.createdAt),
                     style: TextStyle(
                       fontSize: 10.sp,
                       color: Colors.white70,
@@ -1073,7 +1078,7 @@ class _FileBubbleState extends State<_FileBubble> {
                   children: [
                     if (widget.message.createdAt != null)
                       Text(
-                        '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                        formatMessageTime(widget.message.createdAt),
                         style: TextStyle(
                           fontSize: 10.sp,
                           color: widget.isMe ? Colors.white60 : AppTheme.textLightColor,
@@ -1171,7 +1176,7 @@ class _FileBubbleState extends State<_FileBubble> {
             children: [
               if (widget.message.createdAt != null)
                 Text(
-                  '${widget.message.createdAt!.hour.toString().padLeft(2, '0')}:${widget.message.createdAt!.minute.toString().padLeft(2, '0')}',
+                  formatMessageTime(widget.message.createdAt),
                   style: TextStyle(
                     fontSize: 10.sp,
                     color: widget.isMe ? Colors.white60 : AppTheme.textLightColor,
@@ -1333,6 +1338,10 @@ class _AudioBubbleState extends State<_AudioBubble> {
   Duration _position = Duration.zero;
   bool _isDisposed = false;
 
+  StreamSubscription? _playerStateSub;
+  StreamSubscription? _durationSub;
+  StreamSubscription? _positionSub;
+
   @override
   void initState() {
     super.initState();
@@ -1352,7 +1361,7 @@ class _AudioBubbleState extends State<_AudioBubble> {
     try {
       _player = AudioPlayer();
       
-      _player!.playerStateStream.listen((state) {
+      _playerStateSub = _player!.playerStateStream.listen((state) {
         if (_isDisposed || !mounted) return;
         
         setState(() {
@@ -1372,13 +1381,13 @@ class _AudioBubbleState extends State<_AudioBubble> {
         }
       });
 
-      _player!.durationStream.listen((d) {
+      _durationSub = _player!.durationStream.listen((d) {
         if (!_isDisposed && mounted && d != null) {
           setState(() => _duration = d);
         }
       });
 
-      _player!.positionStream.listen((p) {
+      _positionSub = _player!.positionStream.listen((p) {
         if (!_isDisposed && mounted) {
           setState(() => _position = p);
         }
@@ -1432,6 +1441,11 @@ class _AudioBubbleState extends State<_AudioBubble> {
   void dispose() {
     _isDisposed = true;
     _audioController.unregister(widget.message.id);
+
+    _playerStateSub?.cancel();
+    _durationSub?.cancel();
+    _positionSub?.cancel();
+
     _player?.stop();
     _player?.dispose();
     _player = null;

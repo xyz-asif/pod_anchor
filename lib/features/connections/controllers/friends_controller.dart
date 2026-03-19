@@ -5,6 +5,7 @@ import 'package:chatbee/features/connections/repos/connection_repo.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/core/providers/auth_provider.dart';
 
 part 'friends_controller.g.dart';
 
@@ -16,6 +17,7 @@ part 'friends_controller.g.dart';
 class FriendsController extends _$FriendsController {
   @override
   FutureOr<List<FriendWithInfo>> build() async {
+    ref.watch(userSessionProvider);
     // Wait for auth to be ready before loading
     // This prevents race condition where we try to load before token is set
     final authState = await ref.watch(authControllerProvider.future);

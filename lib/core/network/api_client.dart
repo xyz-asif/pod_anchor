@@ -1,9 +1,11 @@
+import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/shared/models/api_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 part 'api_client.g.dart';
 
@@ -15,12 +17,12 @@ part 'api_client.g.dart';
 ///   final response = await apiClient.get('/users');
 ///   final user = UserModel.fromJson(response.data);
 class ApiClient {
-  late final Dio _dio;
-  SharedPreferences? _prefs;
-  static const String _tokenKey = 'auth_token';
-
-  // Singleton pattern
   static final ApiClient _instance = ApiClient._internal();
+  factory ApiClient() => _instance;
+
+  late final Dio _dio;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  static const String _tokenKey = 'auth_token';
 
   ApiClient._internal() {
     _dio = Dio(
@@ -35,17 +37,43 @@ class ApiClient {
       ),
     );
 
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 401) {
+            // Prevent infinite retry loop: only retry once per request
+            if (error.requestOptions.extra['_retried'] == true) {
+              return handler.next(error);
+            }
+            error.requestOptions.extra['_retried'] = true;
+
+            try {
+              final firebaseUser = FirebaseAuth.instance.currentUser;
+              if (firebaseUser != null) {
+                final newToken = await firebaseUser.getIdToken(true); // force refresh
+                if (newToken != null) {
+                  await setToken(newToken);
+                  // Retry the failed request with new token
+                  error.requestOptions.headers['Authorization'] = 'Bearer $newToken';
+                  final response = await _dio.fetch(error.requestOptions);
+                  return handler.resolve(response);
+                }
+              }
+            } catch (_) {
+              // Refresh failed — let the 401 propagate normally
+            }
+          }
+          return handler.next(error);
+        },
+      ),
+    );
+
     // Logging - remove in production if needed
     _dio.interceptors.add(
       LogInterceptor(requestBody: true, responseBody: true),
     );
 
-    print('🔧 ApiClient instance created');
-  }
-
-  // Factory constructor to return singleton
-  factory ApiClient() {
-    return _instance;
+    log('ApiClient instance created', name: 'API_CLIENT');
   }
 
   /// Get the current auth token from headers
@@ -57,32 +85,29 @@ class ApiClient {
     return null;
   }
 
-  /// Initialize: Load saved token from shared preferences and set in headers
+  /// Initialize: Load saved token from secure storage and set in headers
   Future<void> initialize() async {
-    _prefs ??= await SharedPreferences.getInstance();
-    final token = _prefs!.getString(_tokenKey);
+    final token = await _secureStorage.read(key: _tokenKey);
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
-      print('✅ Token loaded from shared preferences and set in headers');
+      log('Token loaded from secure storage and set in headers', name: 'API_CLIENT');
     } else {
-      print('ℹ️ No saved token found in shared preferences');
+      log('No saved token found in secure storage', name: 'API_CLIENT');
     }
   }
 
   /// Set auth token after login and save to secure storage
   Future<void> setToken(String token) async {
-    _prefs ??= await SharedPreferences.getInstance();
     _dio.options.headers['Authorization'] = 'Bearer $token';
-    await _prefs!.setString(_tokenKey, token);
-    print('💾 Token saved to storage: ${token.substring(0, 20)}...');
+    await _secureStorage.write(key: _tokenKey, value: token);
+    log('Token saved to storage', name: 'API_CLIENT');
   }
 
   /// Remove auth token on logout
   Future<void> clearToken() async {
-    _prefs ??= await SharedPreferences.getInstance();
     _dio.options.headers.remove('Authorization');
-    await _prefs!.remove(_tokenKey);
-    print('🗑️ Token cleared from storage and headers');
+    await _secureStorage.delete(key: _tokenKey);
+    log('Token cleared from storage and headers', name: 'API_CLIENT');
   }
 
   /// Check if token is currently set in headers
@@ -144,7 +169,7 @@ class ApiClient {
 }
 
 /// Riverpod provider for ApiClient.
-@riverpod
+@Riverpod(keepAlive: true)
 ApiClient apiClient(ApiClientRef ref) {
   return ApiClient();
 }

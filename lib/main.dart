@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chatbee/app.dart';
@@ -25,39 +26,41 @@ void main() async {
   final container = ProviderContainer();
 
   // Initialize API client (loads saved token if exists)
-  print('🚀 Initializing API client...');
+  log('Initializing API client...', name: 'MAIN');
   final apiClient = container.read(apiClientProvider);
   await apiClient.initialize();
-  print('✅ API client initialized');
+  log('API client initialized', name: 'MAIN');
 
   // Initialize notification service (permissions and setup)
   final notificationService = container.read(notificationServiceProvider);
   await notificationService.initialize();
-  print('🔔 Notification service initialized');
+  log('Notification service initialized', name: 'MAIN');
 
   // Check if user was previously logged in (token exists in secure storage)
   final authNotifier = container.read(authNotifierProvider);
   await authNotifier.init();
-  print('🔐 Auth state initialized: isLoggedIn=${authNotifier.isLoggedIn}');
+  log('Auth state initialized: isLoggedIn=${authNotifier.isLoggedIn}', name: 'MAIN');
 
   // If already logged in, restore session (fetch profile + reconnect WebSocket)
   if (authNotifier.isLoggedIn) {
-    print('🔄 Restoring session...');
+    log('Restoring session...', name: 'MAIN');
 
     // 1. Immediately register FCM token for returning users (handles rotation/startup)
     notificationService.registerTokenWithBackend(
       container.read(notificationRepoProvider),
     );
-    print('📲 FCM registration triggered for returning user');
+    log('FCM registration triggered for returning user', name: 'MAIN');
 
     // 2. Restore profile, WS connection, etc.
-    await container.read(authControllerProvider.notifier).restoreSession();
-    print('✅ Session restored');
-
-    // Eagerly initialize WS event handler so chat list updates
-    // even before the user opens any individual chat screen
-    container.read(wsEventHandlerProvider);
-    print('📡 WS event handler initialized');
+    // Don't await — SessionGate handles loading state
+    container.read(authControllerProvider.notifier).restoreSession().then((_) {
+      // Eagerly initialize WS event handler so chat list updates
+      // even before the user opens any individual chat screen
+      container.read(wsEventHandlerProvider);
+      log('Session restored', name: 'MAIN');
+    }).catchError((e) {
+      log('Session restore failed: $e', name: 'MAIN');
+    });
   }
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));

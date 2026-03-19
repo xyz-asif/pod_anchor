@@ -7,7 +7,7 @@ part of 'feed_controller.dart';
 // **************************************************************************
 
 String _$homeFeedControllerHash() =>
-    r'f856a2d3f1f522d6b46eae1ee939d7109dd2935b';
+    r'34d1a3e315a6fb8c58418375958ea648732f0b12';
 
 /// See also [HomeFeedController].
 @ProviderFor(HomeFeedController)
@@ -24,7 +24,7 @@ final homeFeedControllerProvider =
 
 typedef _$HomeFeedController = AsyncNotifier<List<PoemModel>>;
 String _$exploreFeedControllerHash() =>
-    r'08592cf3d776fe9a97c7277f4dab548cb5754a9e';
+    r'd6cfa6eaa9ecf614726fee859b614d0d0b7a7812';
 
 /// See also [ExploreFeedController].
 @ProviderFor(ExploreFeedController)
@@ -41,7 +41,7 @@ final exploreFeedControllerProvider =
 
 typedef _$ExploreFeedController = AsyncNotifier<List<PoemModel>>;
 String _$audioFeedControllerHash() =>
-    r'2f8007af94e671ba1fa96d28ae36d0f59fa1559c';
+    r'8963fbf8ce5bc19b8b2a1b21de88d20a531dcdf4';
 
 /// See also [AudioFeedController].
 @ProviderFor(AudioFeedController)

@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:chatbee/core/providers/auth_provider.dart';
-import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/auth/views/login_view.dart';
 import 'package:chatbee/features/home/screens/home_screen.dart';
+import 'package:chatbee/features/auth/widgets/session_gate.dart';
 import 'package:chatbee/features/chat/screens/chat_screen.dart';
 import 'package:chatbee/features/notifications/screens/notification_screen.dart';
 import 'package:chatbee/features/profile/screens/other_profile_screen.dart';
@@ -16,6 +16,7 @@ import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/screens/my_poems_screen.dart';
 import 'package:chatbee/features/poems/screens/poem_detail_screen.dart';
 import 'package:chatbee/features/poems/screens/poetry_editor_screen.dart';
+import 'package:chatbee/features/poems/screens/poem_detail_fetch_wrapper.dart';
 
 /// GoRouter provider — created once and cached.
 /// Uses AuthNotifier as refreshListenable so redirects fire on login/logout.
@@ -35,25 +36,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
 
-      // Logged in — check profile setup
-      final user = ref.read(authControllerProvider).valueOrNull;
-
-      // If user is loaded and profile not set up → go to setup
-      if (user != null && !user.isProfileSetup) {
-        if (currentPath == '/profile-setup') return null;
-        return '/profile-setup';
-      }
-
-      // If user is loaded and has no username yet → go to username screen
-      // (This handles the case where setup was done but username step was interrupted)
-      if (user != null &&
-          user.isProfileSetup &&
-          (user.username == null || user.username!.isEmpty)) {
-        if (currentPath == '/username-setup') return null;
-        return '/username-setup';
-      }
-
-      // Already logged in and set up → don't go back to login
+      // Logged in → don't show login
       if (currentPath == '/login') return '/home';
 
       return null;
@@ -73,7 +56,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
 
       // ── Home (bottom nav: chats, friends, profile) ──
-      GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+      GoRoute(
+        path: '/home',
+        builder: (context, state) => const SessionGate(child: HomeScreen()),
+      ),
 
       // ── Poems ──
       GoRoute(
@@ -93,8 +79,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/poem/:id',
         builder: (context, state) {
-          final poem = state.extra as PoemModel;
-          return PoemDetailScreen(poem: poem);
+          final poem = state.extra as PoemModel?;
+          final poemId = state.pathParameters['id']!;
+          if (poem != null) {
+            return PoemDetailScreen(poem: poem);
+          }
+          // Fallback for deep links / notifications / process restoration
+          return PoemDetailFetchWrapper(poemId: poemId);
         },
       ),
 

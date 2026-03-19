@@ -7,7 +7,7 @@ part of 'chat_list_controller.dart';
 // **************************************************************************
 
 String _$chatListControllerHash() =>
-    r'69f640ada3a14970a697d9bbf47005250ca2cc78';
+    r'cb04dc94cd631c628f11e84919fdf59982463dd0';
 
 /// Manages the chat room list state (main chat list screen).
 ///

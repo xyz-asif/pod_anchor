@@ -1,6 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+/// Identity token that changes on every login/logout cycle.
+/// Any provider that holds user-specific data should ref.watch this.
+/// When it changes (on logout), all watchers auto-rebuild.
+final userSessionProvider = StateProvider<int>((ref) => 0);
 
 /// Notifier that tracks whether the user is logged in.
 /// Reads the persisted token on startup; updated by AuthController on login/logout.
@@ -10,8 +15,8 @@ class AuthNotifier extends ChangeNotifier {
 
   /// Call once at startup to check if a token already exists.
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    const storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'auth_token');
     _isLoggedIn = token != null;
     notifyListeners();
   }

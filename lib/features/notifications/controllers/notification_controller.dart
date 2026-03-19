@@ -1,10 +1,11 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/notifications/models/notification_model.dart';
 import 'package:chatbee/features/notifications/repos/notification_repo.dart';
+import 'package:chatbee/core/providers/auth_provider.dart';
 
 part 'notification_controller.g.dart';
 
-/// Manages the notification list and unread badge count.
+/// Manages the notification list and unread badge count.5
 @Riverpod(keepAlive: true)
 class NotificationController extends _$NotificationController {
   bool _hasMore = true;
@@ -12,6 +13,7 @@ class NotificationController extends _$NotificationController {
 
   @override
   FutureOr<List<NotificationModel>> build() async {
+    ref.watch(userSessionProvider);
     final result = await ref.read(notificationRepoProvider).getNotifications();
     _hasMore = result.$2;
     return result.$1;
@@ -22,7 +24,9 @@ class NotificationController extends _$NotificationController {
     _hasMore = true;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      final result = await ref.read(notificationRepoProvider).getNotifications();
+      final result = await ref
+          .read(notificationRepoProvider)
+          .getNotifications();
       _hasMore = result.$2;
       return result.$1;
     });
@@ -37,9 +41,9 @@ class NotificationController extends _$NotificationController {
       final current = state.valueOrNull ?? [];
       if (current.isEmpty) return;
 
-      final result = await ref.read(notificationRepoProvider).getNotifications(
-        before: current.last.id,
-      );
+      final result = await ref
+          .read(notificationRepoProvider)
+          .getNotifications(before: current.last.id);
 
       _hasMore = result.$2;
       state = AsyncValue.data([...current, ...result.$1]);
@@ -112,6 +116,7 @@ class NotificationController extends _$NotificationController {
 class UnreadNotificationCount extends _$UnreadNotificationCount {
   @override
   int build() {
+    ref.watch(userSessionProvider);
     // Initial fetch
     _fetchCount();
     return 0;

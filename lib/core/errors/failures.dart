@@ -23,3 +23,10 @@ class CacheFailure extends Failure {
 class NetworkFailure extends Failure {
   const NetworkFailure([super.message = 'No internet connection']);
 }
+
+/// Thrown when user cancels Google Sign-In. Not a real error.
+class SignInCancelledException implements Exception {
+  const SignInCancelledException();
+  @override
+  String toString() => 'Sign-in was cancelled';
+}

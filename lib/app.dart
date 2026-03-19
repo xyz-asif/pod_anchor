@@ -10,6 +10,9 @@ import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/connections/controllers/friends_controller.dart';
 import 'package:chatbee/features/chat/controllers/ws_event_handler.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'dart:developer';
+import 'package:chatbee/core/providers/auth_provider.dart';
+import 'package:chatbee/core/widgets/connectivity_wrapper.dart';
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
@@ -32,68 +35,72 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   }
 
   @override
-void didChangeAppLifecycleState(AppLifecycleState state) {
-  if (!mounted) return;
-  print('[Lifecycle] → $state');
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    log('→ $state', name: 'LIFECYCLE');
 
-  final wsService = ref.read(webSocketServiceProvider);
+    // Skip lifecycle handling if not logged in
+    final isLoggedIn = ref.read(authNotifierProvider).isLoggedIn;
+    if (!isLoggedIn) return;
 
-  switch (state) {
-    case AppLifecycleState.paused:
-    case AppLifecycleState.hidden: // iOS-specific background state
-      // App is genuinely in background — notify server and close socket.
-      // Note: detached is intentionally excluded (can fire spuriously on Android).
-      wsService.disconnectAndNotifyServer();
-      break;
+    final wsService = ref.read(webSocketServiceProvider);
 
-    case AppLifecycleState.resumed:
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden: // iOS-specific background state
+        // App is genuinely in background — notify server and close socket.
+        // Note: detached is intentionally excluded (can fire spuriously on Android).
+        wsService.disconnectAndNotifyServer();
+        break;
 
-        // ── Step 1: Refresh Firebase token ──────────────────────────────
-        // Firebase tokens expire after 1 hour. If app was backgrounded
-        // longer than that, stored token is stale and WS server will
-        // reject it — causing a permanent disconnect until app restarts.
-        final freshToken = await ref
-            .read(authControllerProvider.notifier)
-            .getAndRefreshToken();
+      case AppLifecycleState.resumed:
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
 
-        if (!mounted) return;
+          // ── Step 1: Refresh Firebase token ──────────────────────────────
+          // Firebase tokens expire after 1 hour. If app was backgrounded
+          // longer than that, stored token is stale and WS server will
+          // reject it — causing a permanent disconnect until app restarts.
+          final freshToken = await ref
+              .read(authControllerProvider.notifier)
+              .getAndRefreshToken();
 
-        // Inject fresh token before reconnecting
-        if (freshToken != null) {
-          wsService.updateToken(freshToken);
-        }
+          if (!mounted) return;
 
-        // ── Step 2: Reconnect WebSocket ──────────────────────────────────
-        final connected = await wsService.connectIfNeeded(
-          timeout: const Duration(seconds: 8),
-        );
+          // Inject fresh token before reconnecting
+          if (freshToken != null) {
+            wsService.updateToken(freshToken);
+          }
 
-        if (!mounted) return;
+          // ── Step 2: Reconnect WebSocket ──────────────────────────────────
+          final connected = await wsService.connectIfNeeded(
+            timeout: const Duration(seconds: 8),
+          );
 
-        if (connected) {
-          print('[Lifecycle] WS reconnected, syncing presence');
-          wsService.sendPresenceStatus(true);
-          wsService.requestPresenceSync();
-        } else {
-          print('[Lifecycle] WS reconnect failed (will retry via backoff)');
-          // The backoff timer in WebSocketService handles retries automatically.
-          // Also, connectivity_plus listener will trigger an instant retry
-          // once network is available again.
-        }
+          if (!mounted) return;
 
-        // ── Step 3: Refresh UI data ──────────────────────────────────────
-        // Background refresh is non-blocking and doesn't show a spinner.
-        ref.read(chatListControllerProvider.notifier).backgroundRefresh();
-        ref.read(friendsControllerProvider.notifier).refresh();
-      });
-      break;
+          if (connected) {
+            log('WS reconnected, syncing presence', name: 'LIFECYCLE');
+            wsService.sendPresenceStatus(true);
+            wsService.requestPresenceSync();
+          } else {
+            log('WS reconnect failed (will retry via backoff)', name: 'LIFECYCLE');
+            // The backoff timer in WebSocketService handles retries automatically.
+            // Also, connectivity_plus listener will trigger an instant retry
+            // once network is available again.
+          }
 
-    default:
-      break;
+          // ── Step 3: Refresh UI data ──────────────────────────────────────
+          // Background refresh is non-blocking and doesn't show a spinner.
+          ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+          ref.read(friendsControllerProvider.notifier).refresh();
+        });
+        break;
+
+      default:
+        break;
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -107,20 +114,22 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
       minTextAdapt: true,
       splitScreenMode: true,
       builder: (context, child) {
-        return MaterialApp.router(
-          title: 'ChatBee',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.dark,
-          darkTheme: AppTheme.dark,
-          themeMode: ThemeMode.light,
-          routerConfig: router,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            FlutterQuillLocalizations.delegate,
-          ],
-          supportedLocales: const [Locale('en')],
+        return ConnectivityWrapper(
+          child: MaterialApp.router(
+            title: 'ChatBee',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.dark,
+            darkTheme: AppTheme.dark,
+            themeMode: ThemeMode.dark,
+            routerConfig: router,
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              FlutterQuillLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('en')],
+          ),
         );
       },
     );
