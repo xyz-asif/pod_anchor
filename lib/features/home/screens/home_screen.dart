@@ -7,6 +7,7 @@ import 'package:chatbee/features/feed/screens/home_feed_screen.dart';
 import 'package:chatbee/features/chat/screens/chat_list_screen.dart';
 import 'package:chatbee/features/feed/screens/explore_screen.dart';
 import 'package:chatbee/features/profile/screens/profile_screen.dart';
+import 'package:chatbee/core/services/notification_service.dart';
 
 /// Home screen shell — text-only bottom navigation with dot indicator.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -41,6 +42,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
     );
     _animationControllers[_currentIndex].value = 1.0;
+
+    // Consume pending notification from terminated-state launch (fix #2)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(notificationServiceProvider).handlePendingNotification(context);
+    });
   }
 
   @override

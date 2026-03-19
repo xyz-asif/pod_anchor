@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/notifications/repos/notification_repo.dart';
 import 'package:chatbee/features/notifications/utils/notification_navigator.dart';
+import 'package:chatbee/core/routes/app_router.dart';
 
 part 'notification_service.g.dart';
 
@@ -28,6 +31,9 @@ class NotificationService {
 
   /// Pending notification data from app launch via terminated state.
   Map<String, dynamic>? _pendingNotificationData;
+
+  /// Tracks the token refresh subscription to prevent leaks.
+  StreamSubscription? _tokenRefreshSubscription;
 
   /// Call this once after Firebase.initializeApp().
   /// Handles permissions, local notification setup, and message handlers.
@@ -58,7 +64,9 @@ class NotificationService {
       }
     }
 
-    _fcm.onTokenRefresh.listen((newToken) async {
+    // Cancel previous listener before adding new one (fix #3: subscription leak)
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = _fcm.onTokenRefresh.listen((newToken) async {
       try {
         await repo.registerFCMToken(newToken);
         log('Refreshed FCM token registered', name: 'FCM');
@@ -72,6 +80,13 @@ class NotificationService {
       _handleNotificationNavigation(context, _pendingNotificationData!);
       _pendingNotificationData = null;
     }
+  }
+
+  /// Call on logout to stop listening for token refreshes (fix #3).
+  void cleanup() {
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = null;
+    _pendingNotificationData = null;
   }
 
   Future<void> requestPermissions() async {
@@ -138,8 +153,14 @@ class NotificationService {
         if (response.payload != null) {
           try {
             final data = jsonDecode(response.payload!) as Map<String, dynamic>;
-            // Store for later navigation (context not available here)
-            _pendingNotificationData = data;
+            // Try to navigate immediately via rootNavigatorKey
+            final context = rootNavigatorKey.currentContext;
+            if (context != null) {
+              _handleNotificationNavigation(context, data);
+            } else {
+              // Store for later navigation (context not available yet)
+              _pendingNotificationData = data;
+            }
           } catch (_) {}
         }
       },
@@ -159,16 +180,27 @@ class NotificationService {
       _showLocalNotification(message);
     });
 
-    // 2. When the app is opened from a background state
+    // 2. Background → foreground tap: navigate immediately (app is running)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       log(
         'Message clicked! App opened from background: ${message.messageId}',
         name: 'FCM',
       );
-      _handleNotificationTap(message.data);
+      final data = message.data;
+      final resourceType = data['resourceType'] as String?;
+      final resourceId = data['resourceId'] as String?;
+      if (resourceType != null && resourceId != null) {
+        final context = rootNavigatorKey.currentContext;
+        if (context != null) {
+          navigateToNotification(context, resourceType, resourceId);
+        } else {
+          // Context not ready yet — store for later
+          _pendingNotificationData = data;
+        }
+      }
     });
 
-    // 3. Check if app was launched from a notification (terminated state)
+    // 3. Terminated state: store for later (app not running yet)
     _fcm.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         log(
@@ -180,11 +212,6 @@ class NotificationService {
     });
   }
 
-  void _handleNotificationTap(Map<String, dynamic> data) {
-    // Store the data for navigation when context is available
-    _pendingNotificationData = data;
-  }
-
   void _handleNotificationNavigation(
     BuildContext context,
     Map<String, dynamic> data,
@@ -192,34 +219,39 @@ class NotificationService {
     final resourceType = data['resourceType'] as String?;
     final resourceId = data['resourceId'] as String?;
 
-    if (resourceType != null && resourceId != null) {
+    if (resourceType != null && resourceType.isNotEmpty &&
+        resourceId != null && resourceId.isNotEmpty) {
       navigateToNotification(context, resourceType, resourceId);
     }
   }
 
+  /// Shows a local notification for foreground messages.
+  /// iOS handles foreground display via setForegroundNotificationPresentationOptions,
+  /// so we only need the local notification fallback on Android (fix #5).
   void _showLocalNotification(RemoteMessage message) {
     final notification = message.notification;
-    final android = message.notification?.android;
+    if (notification == null) return;
 
-    if (notification != null && android != null) {
-      _localNotifications.show(
-        id: notification.hashCode,
-        title: notification.title,
-        body: notification.body,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'high_importance_channel',
-            'High Importance Notifications',
-            channelDescription:
-                'This channel is used for important notifications.',
-            icon: '@mipmap/ic_launcher',
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
+    // iOS handles foreground display natively — skip to avoid duplicates
+    if (!Platform.isAndroid) return;
+
+    _localNotifications.show(
+      id: notification.hashCode,
+      title: notification.title,
+      body: notification.body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'high_importance_channel',
+          'High Importance Notifications',
+          channelDescription:
+              'This channel is used for important notifications.',
+          icon: '@mipmap/ic_launcher',
+          importance: Importance.high,
+          priority: Priority.high,
         ),
-        payload: jsonEncode(message.data),
-      );
-    }
+      ),
+      payload: jsonEncode(message.data),
+    );
   }
 }
 

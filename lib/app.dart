@@ -13,6 +13,7 @@ import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'dart:developer';
 import 'package:chatbee/core/providers/auth_provider.dart';
 import 'package:chatbee/core/widgets/connectivity_wrapper.dart';
+import 'package:chatbee/features/notifications/controllers/notification_controller.dart';
 
 class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
@@ -94,6 +95,18 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           // Background refresh is non-blocking and doesn't show a spinner.
           ref.read(chatListControllerProvider.notifier).backgroundRefresh();
           ref.read(friendsControllerProvider.notifier).refresh();
+          // Re-sync notification badge count (fix #4 — drift prevention)
+          ref.read(unreadNotificationCountProvider.notifier).refresh();
+
+          // ── Step 4: Recover stuck session ─────────────────────────────────
+          // If the app cold-started offline, restoreSession() failed and
+          // SessionGate is stuck on the error screen. By this point the
+          // network is back (WS connected above), so retry session restore.
+          final authState = ref.read(authControllerProvider);
+          if (authState.hasError) {
+            log('Auth in error state — retrying session restore', name: 'LIFECYCLE');
+            ref.read(authControllerProvider.notifier).restoreSession();
+          }
         });
         break;
 

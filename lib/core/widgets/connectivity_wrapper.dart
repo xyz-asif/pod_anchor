@@ -116,15 +116,24 @@ class _ConnectivityWrapperState extends ConsumerState<ConnectivityWrapper> {
     final isLoggedIn = ref.read(authNotifierProvider).isLoggedIn;
     if (!isLoggedIn) return;
 
-    // Session might have expired while offline — restore it
-    final authState = ref.read(authControllerProvider);
-    if (authState.hasError) {
-      ref.read(authControllerProvider.notifier).restoreSession();
-    }
-
-    // Refresh chat list silently
+    // Refresh chat list silently (fast operation)
     try {
       ref.read(chatListControllerProvider.notifier).backgroundRefresh();
     } catch (_) {}
+
+    // Session restore with a short delay to let DNS catch up.
+    // Without this delay, the host lookup may still fail immediately
+    // after connectivity_plus reports online.
+    final authState = ref.read(authControllerProvider);
+    if (authState.hasError) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        final stillError = ref.read(authControllerProvider).hasError;
+        if (stillError) {
+          log('Connectivity restored — retrying session restore', name: 'CONNECTIVITY');
+          ref.read(authControllerProvider.notifier).restoreSession();
+        }
+      });
+    }
   }
 }

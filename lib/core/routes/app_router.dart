@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:chatbee/core/providers/auth_provider.dart';
@@ -18,12 +19,16 @@ import 'package:chatbee/features/poems/screens/poem_detail_screen.dart';
 import 'package:chatbee/features/poems/screens/poetry_editor_screen.dart';
 import 'package:chatbee/features/poems/screens/poem_detail_fetch_wrapper.dart';
 
+/// Global navigator key — used by NotificationService to navigate from outside widget tree.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 /// GoRouter provider — created once and cached.
 /// Uses AuthNotifier as refreshListenable so redirects fire on login/logout.
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authNotifier = ref.read(authNotifierProvider);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/login',
     refreshListenable: authNotifier,
     redirect: (context, state) {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -22,6 +23,12 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+
+    // Re-sync badge count from server when screen opens (fix #4)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(unreadNotificationCountProvider.notifier).refresh();
+    });
   }
 
   @override
@@ -48,6 +55,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
         actions: [
           TextButton(
             onPressed: () {
+              HapticFeedback.lightImpact();
               ref.read(notificationControllerProvider.notifier).markAllAsRead();
             },
             child: Text(
@@ -97,6 +105,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
                 return _NotificationTile(
                   notification: notif,
                   onTap: () {
+                    HapticFeedback.selectionClick();
                     // Mark as read on tap
                     if (!notif.isRead) {
                       ref.read(notificationControllerProvider.notifier).markAsRead(notif.id);
@@ -221,7 +230,11 @@ class _NotificationTile extends StatelessWidget {
                   SizedBox(height: 4.h),
                   Text(
                     notification.createdAt != null
-                        ? timeago.format(notification.createdAt!)
+                        ? timeago.format(
+                            notification.createdAt!.isUtc
+                                ? notification.createdAt!.toLocal()
+                                : notification.createdAt!,
+                          )
                         : '',
                     style: TextStyle(
                       fontSize: 12.sp,

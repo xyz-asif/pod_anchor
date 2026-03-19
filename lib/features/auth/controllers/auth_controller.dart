@@ -63,6 +63,7 @@ class AuthController extends _$AuthController {
   /// Sign out and disconnect WebSocket.
   Future<void> signOut() async {
     ref.read(webSocketServiceProvider).disconnect();
+    ref.read(notificationServiceProvider).cleanup();
     await ref.read(authRepoProvider).signOut();
     state = const AsyncValue.data(null);
 
