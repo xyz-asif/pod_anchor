@@ -1,6 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/core/utils/poem_normalizer.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 
 part 'poem_repo.g.dart';
@@ -82,30 +83,7 @@ class PoemRepo {
       queryParameters: query,
     );
 
-    // Normalize backend variations for the "liked" flag so UI gets `isLikedByMe`.
-    // Some backend responses may use keys like `liked`, `likedByMe`, or `liked_by_me`.
-    final raw = response.data as Map<String, dynamic>;
-    final rawList = (raw['poems'] as List<dynamic>?) ?? [];
-    final normalized = rawList.map((e) {
-      if (e is Map<String, dynamic>) {
-        final copy = Map<String, dynamic>.from(e);
-        if (!copy.containsKey('isLikedByMe')) {
-          if (copy.containsKey('liked'))
-            copy['isLikedByMe'] = copy['liked'];
-          else if (copy.containsKey('likedByMe'))
-            copy['isLikedByMe'] = copy['likedByMe'];
-          else if (copy.containsKey('liked_by_me'))
-            copy['isLikedByMe'] = copy['liked_by_me'];
-        }
-        return copy;
-      }
-      return e;
-    }).toList();
-
-    final normalizedData = Map<String, dynamic>.from(raw);
-    normalizedData['poems'] = normalized;
-
-    return PoemsPage.fromJson(normalizedData);
+    return normalizePoemsPage(response.data as Map<String, dynamic>);
   }
 
   Future<PoemsPage> getUserPoems(
@@ -120,30 +98,7 @@ class PoemRepo {
       queryParameters: query,
     );
 
-    // Normalize backend variations for the "liked" flag so UI gets `isLikedByMe`.
-    // Some backend responses may use keys like `liked`, `likedByMe`, or `liked_by_me`.
-    final raw = response.data as Map<String, dynamic>;
-    final rawList = (raw['poems'] as List<dynamic>?) ?? [];
-    final normalized = rawList.map((e) {
-      if (e is Map<String, dynamic>) {
-        final copy = Map<String, dynamic>.from(e);
-        if (!copy.containsKey('isLikedByMe')) {
-          if (copy.containsKey('liked'))
-            copy['isLikedByMe'] = copy['liked'];
-          else if (copy.containsKey('likedByMe'))
-            copy['isLikedByMe'] = copy['likedByMe'];
-          else if (copy.containsKey('liked_by_me'))
-            copy['isLikedByMe'] = copy['liked_by_me'];
-        }
-        return copy;
-      }
-      return e;
-    }).toList();
-
-    final normalizedData = Map<String, dynamic>.from(raw);
-    normalizedData['poems'] = normalized;
-
-    return PoemsPage.fromJson(normalizedData);
+    return normalizePoemsPage(response.data as Map<String, dynamic>);
   }
 }
 

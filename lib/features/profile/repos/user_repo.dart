@@ -25,12 +25,14 @@ class UserRepo {
     String? photoURL,
     String? bio,
     String? coverImageURL,
+    String? externalLink,
   }) async {
     final data = <String, dynamic>{};
     if (displayName != null) data['displayName'] = displayName;
     if (photoURL != null) data['photoURL'] = photoURL;
     if (bio != null) data['bio'] = bio;
     if (coverImageURL != null) data['coverImageURL'] = coverImageURL;
+    if (externalLink != null) data['externalLink'] = externalLink;
 
     final response = await apiClient.patch(ApiEndpoints.usersMe, data: data);
     return UserModel.fromJson(response.data);

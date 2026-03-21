@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -47,6 +48,17 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
       }
     });
     _load();
+  }
+
+  @override
+  void didUpdateWidget(OtherProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId) {
+      _isLoadingProfile = true;
+      _isLoadingPoems = true;
+      _isLoadingReposts = true;
+      _load();
+    }
   }
 
   @override
@@ -117,40 +129,54 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
   }
 
   Future<void> _toggleFollow() async {
+    HapticFeedback.mediumImpact();
     if (_profile == null || _isFollowLoading) return;
-    setState(() => _isFollowLoading = true);
-    final prevFollowing = _profile?.isFollowedByMe ?? false;
+    
+    final prevFollowing = _profile!.isFollowedByMe;
+    final prevCount = _profile!.followersCount;
+    
+    // Optimistic update - flip state immediately
+    setState(() {
+      _isFollowLoading = true;
+      _profile = _profile!.copyWith(
+        isFollowedByMe: !prevFollowing,
+        followersCount: prevFollowing 
+            ? (prevCount - 1).clamp(0, 999999) 
+            : prevCount + 1,
+      );
+    });
+    
     try {
       final isNowFollowing = await ref
           .read(followRepoProvider)
           .toggleFollow(widget.userId);
+      
+      // Reconcile with server truth
+      int newCount = prevCount;
+      if (isNowFollowing && !prevFollowing) newCount += 1;
+      else if (!isNowFollowing && prevFollowing) newCount -= 1;
+      if (newCount < 0) newCount = 0;
+
       setState(() {
-        // Only change count if the state actually flipped
-        int newCount = _profile!.followersCount;
-
-        if (isNowFollowing && !prevFollowing) {
-          newCount += 1;
-        } else if (!isNowFollowing && prevFollowing) {
-          newCount -= 1;
-        }
-
-        if (newCount < 0) newCount = 0;
-
         _profile = _profile!.copyWith(
           isFollowedByMe: isNowFollowing,
           followersCount: newCount,
         );
       });
-      // Refresh active user's profile to update following count in state
+      
+      // Update own following count
       ref.read(authControllerProvider.notifier).updateFollowingCount(
-            isNowFollowing && !prevFollowing
-                ? 1
-                : (!isNowFollowing && prevFollowing ? -1 : 0),
-          );
-      // Optional: still refresh to be sure
-      ref.read(authControllerProvider.notifier).refreshProfile();
+        isNowFollowing && !prevFollowing ? 1 : (!isNowFollowing && prevFollowing ? -1 : 0),
+      );
     } catch (e) {
+      // Rollback on error
       if (mounted) {
+        setState(() {
+          _profile = _profile!.copyWith(
+            isFollowedByMe: prevFollowing,
+            followersCount: prevCount,
+          );
+        });
         AppSnackbar.show(
           context,
           message: e.toString(),
@@ -163,6 +189,7 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
   }
 
   Future<void> _openChat() async {
+    HapticFeedback.selectionClick();
     if (_isChatLoading) return;
     setState(() => _isChatLoading = true);
     try {
@@ -196,7 +223,17 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     final profile = _profile!;
 
     return Scaffold(
-      body: NestedScrollView(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          _isLoadingProfile = true;
+          _isLoadingPoems = true;
+          _isLoadingReposts = true;
+          await _load();
+          if (_tabController.index == 1) {
+            await _loadReposts();
+          }
+        },
+        child: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           // ── Cover + avatar + info ──
           SliverToBoxAdapter(
@@ -326,18 +363,24 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                                     value: profile.postsCount,
                                   ),
                                   GestureDetector(
-                                    onTap: () => context.push(
-                                      '/profile/${profile.id}/followers',
-                                    ),
+                                    onTap: () {
+                                      HapticFeedback.selectionClick();
+                                      context.push(
+                                        '/profile/${profile.id}/followers',
+                                      );
+                                    },
                                     child: _StatItem(
                                       label: 'Followers',
                                       value: profile.followersCount,
                                     ),
                                   ),
                                   GestureDetector(
-                                    onTap: () => context.push(
-                                      '/profile/${profile.id}/following',
-                                    ),
+                                    onTap: () {
+                                      HapticFeedback.selectionClick();
+                                      context.push(
+                                        '/profile/${profile.id}/following',
+                                      );
+                                    },
                                     child: _StatItem(
                                       label: 'Following',
                                       value: profile.followingCount,
@@ -390,19 +433,51 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                           color: AppTheme.textLightColor,
                         ),
                       ),
-                      if (profile.bio.isNotEmpty) ...[
-                        SizedBox(height: 10.h),
-                        Text(
-                          profile.bio,
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            color: AppTheme.textDarkColor.withValues(
-                              alpha: 0.8,
+                        if (profile.bio.isNotEmpty) ...[
+                          SizedBox(height: 10.h),
+                          Text(
+                            profile.bio,
+                            style: TextStyle(
+                              fontSize: 15.sp,
+                              color: AppTheme.textDarkColor.withValues(
+                                alpha: 0.8,
+                              ),
+                              height: 1.5,
                             ),
-                            height: 1.5,
                           ),
-                        ),
-                      ],
+                        ],
+                        if (profile.externalLink.isNotEmpty) ...[
+                          SizedBox(height: 8.h),
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              AppSnackbar.show(
+                                context,
+                                message: 'Opening ${profile.externalLink}',
+                                type: SnackbarType.info,
+                              );
+                            },
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.link_rounded,
+                                  size: 16.r,
+                                  color: AppTheme.primaryColor,
+                                ),
+                                SizedBox(width: 4.w),
+                                Text(
+                                  profile.externalLink,
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    color: AppTheme.primaryColor,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
 
                       // Follow / Chat buttons
                       if (!profile.isMe) ...[
@@ -445,8 +520,9 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
           children: [_buildPoemsTab(), _buildRepostsTab()],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildFollowButton(PublicProfileModel profile) {
     return ElevatedButton(
@@ -468,9 +544,11 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
           ? SizedBox(
               width: 16.r,
               height: 16.r,
-              child: const CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Colors.white,
+                color: profile.isFollowedByMe
+                    ? AppTheme.primaryColor
+                    : Colors.white,
               ),
             )
           : Text(

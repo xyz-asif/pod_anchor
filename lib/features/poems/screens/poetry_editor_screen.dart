@@ -36,12 +36,17 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
 
   bool _isPreviewMode = false;
   bool _showToolbar = false;
+  double? _toolbarTop;
   bool _justSaved = false;
   Timer? _toolbarHideTimer;
+  Timer? _countDebounce;
+  StreamSubscription? _documentChangesSub;
+  StreamSubscription? _audioPlayerSub;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlayingAudio = false;
 
+  // Remove the duplicate bool
   int _wordCount = 0;
   int _lineCount = 0;
   int _charCount = 0;
@@ -73,38 +78,103 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
     }
 
     // Listen for content changes → update word count
-    _quillController.document.changes.listen((_) {
-      _updateCounts();
+    _documentChangesSub = _quillController.document.changes.listen((_) {
+      if (mounted) setState(() {});
+      _countDebounce?.cancel();
+      _countDebounce = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) _updateCounts();
+      });
     });
 
     // Listen for selection changes → show/hide floating toolbar
     _quillController.addListener(_onSelectionChanged);
   }
 
+  TextSelection? _lastNonCollapsedSelection;
+
   void _onSelectionChanged() {
     final selection = _quillController.selection;
-
-    // Cancel any existing timer
     _toolbarHideTimer?.cancel();
 
     if (selection.isValid && !selection.isCollapsed && !_isPreviewMode) {
-      setState(() {
-        _showToolbar = true;
-      });
-
-      // Auto-hide toolbar after 5 seconds of inactivity
+      _lastNonCollapsedSelection = selection;
+      _calculateToolbarPosition();
+      setState(() => _showToolbar = true);
       _toolbarHideTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted) {
-          setState(() {
-            _showToolbar = false;
-          });
-        }
+        if (mounted) setState(() => _showToolbar = false);
       });
     } else {
-      setState(() {
-        _showToolbar = false;
-      });
+      if (_showToolbar) {
+        _toolbarHideTimer = Timer(const Duration(milliseconds: 300), () {
+          if (mounted && _quillController.selection.isCollapsed) {
+            setState(() {
+              _showToolbar = false;
+              _lastNonCollapsedSelection = null;
+            });
+          }
+        });
+      }
     }
+  }
+
+  void _calculateToolbarPosition() {
+    // Simple approach: position the toolbar at a fixed location 
+    // relative to the visible screen, not relative to the document.
+    // This ensures it's always visible regardless of scroll position.
+    
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight;
+    final bottomPadding = 60.0; // word counter height
+    
+    // Place toolbar at 15% from the top of the visible editor area
+    // This keeps it visible and away from both the top bar and bottom counter
+    final visibleEditorHeight = screenHeight - topPadding - bottomPadding;
+    final toolbarY = topPadding + (visibleEditorHeight * 0.15);
+    
+    setState(() {
+      _showToolbar = true;
+      _toolbarTop = toolbarY.clamp(topPadding + 8, screenHeight - 100);
+    });
+  }
+
+  bool get _hasUnsavedChanges {
+    final currentDelta = jsonEncode(_quillController.document.toDelta().toJson());
+    final currentTitle = _titleController.text.trim();
+
+    if (_currentPoem == null) {
+      return _quillController.document.toPlainText().trim().isNotEmpty ||
+             currentTitle.isNotEmpty;
+    }
+
+    return currentDelta != _currentPoem!.contentJson ||
+           currentTitle != _currentPoem!.title.trim();
+  }
+
+  Future<bool> _onWillPop() async {
+    if (!_hasUnsavedChanges) return true;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Unsaved changes',
+            style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color, fontWeight: FontWeight.w600)),
+        content: Text('You have unsaved changes. What would you like to do?',
+            style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'stay'),
+            child: Text('Keep editing', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'discard'),
+            child: Text('Discard', style: TextStyle(color: Colors.red.shade400)),
+          ),
+        ],
+      ),
+    );
+    return result == 'discard';
   }
 
   void _updateCounts() {
@@ -146,7 +216,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
       await _audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(audioUrl)));
       await _audioPlayer.play();
       setState(() => _isPlayingAudio = true);
-      _audioPlayer.playerStateStream.listen((s) {
+      _audioPlayerSub?.cancel();
+      _audioPlayerSub = _audioPlayer.playerStateStream.listen((s) {
         if (s.processingState == ProcessingState.completed) {
           if (mounted) setState(() => _isPlayingAudio = false);
         }
@@ -166,15 +237,20 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete poem?'),
-        content: const Text('This cannot be undone.'),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete poem?', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color, fontWeight: FontWeight.w600)),
+        content: Text('This cannot be undone.', style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () {
+              HapticFeedback.heavyImpact();
+              Navigator.pop(ctx, true);
+            },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
@@ -207,6 +283,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
 
   @override
   void dispose() {
+    _countDebounce?.cancel();
+    _documentChangesSub?.cancel();
+    _audioPlayerSub?.cancel();
     _toolbarHideTimer?.cancel();
     _quillController.removeListener(_onSelectionChanged);
     _quillController.dispose();
@@ -239,7 +318,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
       title: title.isEmpty ? 'Untitled Poem' : title,
       contentJson: contentJson,
       plainText: plainText,
-      coverColor: '',
+      coverColor: _currentPoem?.coverColor ?? '',
       existingPoemId: widget.poemId,
       existingPoem: _currentPoem,
     );
@@ -250,15 +329,22 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
         _currentPoem = result;
         _titleController.text = result.title;
       });
-      context.pop();
+      context.pop(result);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: _buildAppBar(context),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && mounted) context.pop();
+      },
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: _buildAppBar(context),
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
         child: Stack(
@@ -298,26 +384,31 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
 
             // Floating toolbar
             if (_showToolbar && !_isPreviewMode)
-              Positioned(
-                top: 200,
-                left: 0,
-                right: 0,
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOut,
+                top: _toolbarTop ?? (MediaQuery.of(context).padding.top + kToolbarHeight + 16),
+                left: 16,
+                right: 16,
                 child: Center(
-                  child: AnimatedOpacity(
-                    opacity: _showToolbar ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOut,
-                    child: AnimatedSlide(
-                      offset: _showToolbar ? Offset.zero : const Offset(0, 0.2),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: AnimatedOpacity(
+                      opacity: 1.0,
                       duration: const Duration(milliseconds: 200),
                       curve: Curves.easeInOut,
-                      child: FloatingToolbar(controller: _quillController),
+                      child: FloatingToolbar(
+                        controller: _quillController,
+                        savedSelection: _lastNonCollapsedSelection,
+                      ),
                     ),
                   ),
                 ),
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -328,7 +419,10 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios),
-        onPressed: () => context.pop(),
+        onPressed: () async {
+          final shouldPop = await _onWillPop();
+          if (shouldPop && mounted) context.pop();
+        },
       ),
       actions: [
         if (widget.poemId != null)
@@ -354,22 +448,22 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen> {
 
         // Undo
         IconButton(
-          icon: const Icon(Icons.undo),
+          icon: Icon(Icons.undo, color: _quillController.hasUndo ? null : Theme.of(context).iconTheme.color?.withValues(alpha: 0.3)),
           tooltip: 'Undo',
-          onPressed: () {
+          onPressed: _quillController.hasUndo ? () {
             HapticFeedback.lightImpact();
             _quillController.undo();
-          },
+          } : null,
         ),
 
         // Redo
         IconButton(
-          icon: const Icon(Icons.redo),
+          icon: Icon(Icons.redo, color: _quillController.hasRedo ? null : Theme.of(context).iconTheme.color?.withValues(alpha: 0.3)),
           tooltip: 'Redo',
-          onPressed: () {
+          onPressed: _quillController.hasRedo ? () {
             HapticFeedback.lightImpact();
             _quillController.redo();
-          },
+          } : null,
         ),
 
         // Save button

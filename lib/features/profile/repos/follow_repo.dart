@@ -33,11 +33,18 @@ class FollowRepo {
     final response = await apiClient
         .get(ApiEndpoints.userFollowers(userId), queryParameters: query);
     
+    if (response.data == null) {
+      return const UserSearchPage(users: [], hasMore: false);
+    }
+    
     // Defensive handling if backend returns List instead of Map
     if (response.data is List) {
       final list = response.data as List;
       return UserSearchPage(
-        users: list.map((e) => UserSearchResult.fromJson(e as Map<String, dynamic>)).toList(),
+        users: list
+            .where((e) => e != null)
+            .map((e) => UserSearchResult.fromJson(e as Map<String, dynamic>))
+            .toList(),
         hasMore: false,
       );
     }
@@ -52,11 +59,18 @@ class FollowRepo {
     final response = await apiClient
         .get(ApiEndpoints.userFollowing(userId), queryParameters: query);
 
+    if (response.data == null) {
+      return const UserSearchPage(users: [], hasMore: false);
+    }
+
     // Defensive handling
     if (response.data is List) {
       final list = response.data as List;
       return UserSearchPage(
-        users: list.map((e) => UserSearchResult.fromJson(e as Map<String, dynamic>)).toList(),
+        users: list
+            .where((e) => e != null)
+            .map((e) => UserSearchResult.fromJson(e as Map<String, dynamic>))
+            .toList(),
         hasMore: false,
       );
     }

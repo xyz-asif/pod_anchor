@@ -11,6 +11,7 @@ import 'package:chatbee/core/services/cloudinary_service.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/repos/poem_repo.dart';
 import 'package:chatbee/features/poems/controllers/poem_controller.dart';
+import 'package:chatbee/features/feed/controllers/feed_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 // ── Static hashtag chips — the fixed set ──
@@ -119,6 +120,9 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _previewPlayer = AudioPlayer();
   bool _isPlayingPreview = false;
+  bool _isRecordingPaused = false;
+  bool _isLoadingAudio = false;
+  StreamSubscription? _audioPlayerSub;
 
   // pulse animation (recording indicator)
   late final AnimationController _pulseController;
@@ -163,6 +167,7 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
     _customTagController.dispose();
     _recordingTimer?.cancel();
     _recorder.dispose();
+    _audioPlayerSub?.cancel();
     _previewPlayer.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -195,6 +200,7 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
         _audioState = AudioState.recording;
         _recordingPath = path;
         _recordingSeconds = 0;
+        _isRecordingPaused = false;
       });
 
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -226,6 +232,7 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
         _audioState = AudioState.idle;
         _recordingPath = null;
         _audioDuration = 0;
+        _isRecordingPaused = false;
       });
       return;
     }
@@ -234,6 +241,7 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
       _audioState = AudioState.recorded;
       _recordingPath = path;
       _audioDuration = _recordingSeconds;
+      _isRecordingPaused = false;
     });
   }
 
@@ -245,7 +253,22 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
       _recordingPath = null;
       _recordingSeconds = 0;
       _audioDuration = 0;
+      _isRecordingPaused = false;
     });
+  }
+
+  Future<void> _pauseRecording() async {
+    await _recorder.pause();
+    _recordingTimer?.cancel();
+    setState(() => _isRecordingPaused = true);
+  }
+
+  Future<void> _resumeRecording() async {
+    await _recorder.resume();
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => _recordingSeconds++);
+    });
+    setState(() => _isRecordingPaused = false);
   }
 
   Future<void> _pickAudioFile() async {
@@ -283,6 +306,8 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
   }
 
   Future<void> _togglePreviewPlayback() async {
+    if (_isLoadingAudio) return;
+
     if (_isPlayingPreview) {
       await _previewPlayer.stop();
       setState(() => _isPlayingPreview = false);
@@ -304,11 +329,24 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
       return;
     }
 
-    await _previewPlayer.setAudioSource(source);
-    await _previewPlayer.play();
-    setState(() => _isPlayingPreview = true);
+    setState(() => _isLoadingAudio = true);
 
-    _previewPlayer.playerStateStream.listen((s) {
+    try {
+      await _previewPlayer.setAudioSource(source);
+      _previewPlayer.play();
+      if (mounted) {
+        setState(() {
+          _isPlayingPreview = true;
+          _isLoadingAudio = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingAudio = false);
+      return;
+    }
+
+    _audioPlayerSub?.cancel();
+    _audioPlayerSub = _previewPlayer.playerStateStream.listen((s) {
       if (s.processingState == ProcessingState.completed) {
         if (mounted) setState(() => _isPlayingPreview = false);
       }
@@ -382,9 +420,13 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
             .read(poemRepoProvider)
             .updatePoem(widget.existingPoemId!, request);
         ref.read(myPoemsControllerProvider.notifier).updatePoem(poem);
+        try { ref.read(homeFeedControllerProvider.notifier).updatePoemInFeed(poem); } catch (_) {}
+        try { ref.read(exploreFeedControllerProvider.notifier).updatePoemInFeed(poem); } catch (_) {}
       } else {
         poem = await ref.read(poemRepoProvider).createPoem(request);
         ref.read(myPoemsControllerProvider.notifier).prependPoem(poem);
+        try { ref.read(homeFeedControllerProvider.notifier).prependPoem(poem); } catch (_) {}
+        try { ref.read(exploreFeedControllerProvider.notifier).prependPoem(poem); } catch (_) {}
       }
 
       if (mounted) Navigator.of(context).pop(poem);
@@ -403,9 +445,16 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
   // ── Build ──
 
   @override
-  @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
+    return PopScope(
+      canPop: !_isSubmitting,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (_isSubmitting) {
+          AppSnackbar.show(context, message: 'Please wait...', type: SnackbarType.error);
+        }
+      },
+      child: DraggableScrollableSheet(
       initialChildSize: 0.85,
       minChildSize: 0.5,
       maxChildSize: 0.95,
@@ -725,6 +774,7 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
           ),
         );
       },
+      ),
     );
   }
 
@@ -732,139 +782,167 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
     Widget content;
     switch (_audioState) {
       case AudioState.idle:
-        content = Row(
-          children: [
-            // Record button
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _startRecording,
-                icon: Icon(
-                  Icons.mic_rounded,
-                  size: 18.r,
-                  color: AppTheme.primaryColor,
-                ),
-                label: Text(
-                  'Record',
-                  style: TextStyle(
-                    fontSize: 14.sp,
+        content = SizedBox(
+          width: double.infinity,
+          child: Row(
+            children: [
+              // Record button
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _startRecording,
+                  icon: Icon(
+                    Icons.mic_rounded,
+                    size: 18.r,
                     color: AppTheme.primaryColor,
                   ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(vertical: 12.h),
-                  side: const BorderSide(color: AppTheme.primaryColor),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10.r),
+                  label: Text(
+                    'Record',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                    side: const BorderSide(color: AppTheme.primaryColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
                   ),
                 ),
               ),
-            ),
-            SizedBox(width: 10.w),
-            // Upload button
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickAudioFile,
-                icon: Icon(
-                  Icons.upload_file_rounded,
-                  size: 18.r,
-                  color: AppTheme.textMediumColor,
-                ),
-                label: Text(
-                  'Upload',
-                  style: TextStyle(
-                    fontSize: 14.sp,
+              SizedBox(width: 10.w),
+              // Upload button
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickAudioFile,
+                  icon: Icon(
+                    Icons.upload_file_rounded,
+                    size: 18.r,
                     color: AppTheme.textMediumColor,
                   ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(vertical: 12.h),
-                  side: BorderSide(color: AppTheme.borderColor),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10.r),
+                  label: Text(
+                    'Upload',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppTheme.textMediumColor,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                    side: BorderSide(color: AppTheme.borderColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
         break;
 
       case AudioState.recording:
-        content = SizedBox(
+        content = Container(
           width: double.infinity,
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10.r),
-              border: Border.all(color: Colors.red.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                AnimatedBuilder(
-                  animation: _pulseAnimation,
-                  builder: (_, __) => Opacity(
-                    opacity: _pulseAnimation.value,
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+          decoration: BoxDecoration(
+            color: AppTheme.featureBackgroundColor,
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(color: AppTheme.borderColor),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Left: Cancel
+              GestureDetector(
+                onTap: _cancelRecording,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: EdgeInsets.all(4.r),
+                  child: Icon(Icons.delete_outline_rounded, size: 24.r, color: Colors.redAccent),
+                ),
+              ),
+              
+              // Center: Timer & Status
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _pulseAnimation,
+                        builder: (_, __) => Container(
+                          width: 8.r, height: 8.r,
+                          decoration: BoxDecoration(
+                            color: (_isRecordingPaused ? Colors.orange : Colors.red)
+                                .withValues(alpha: _isRecordingPaused ? 0.7 : _pulseAnimation.value),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        _formatDuration(_recordingSeconds),
+                        style: TextStyle(
+                          fontSize: 20.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDarkColor,
+                          fontFamily: 'monospace',
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    _isRecordingPaused ? 'Paused' : 'Recording',
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      color: AppTheme.textLightColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              
+              // Right: Controls
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Pause / Resume
+                  GestureDetector(
+                    onTap: _isRecordingPaused ? _resumeRecording : _pauseRecording,
                     child: Container(
-                      width: 10.r,
-                      height: 10.r,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
+                      width: 40.r, height: 40.r,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _isRecordingPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                        color: AppTheme.primaryColor, size: 20.r,
                       ),
                     ),
                   ),
-                ),
-                SizedBox(width: 10.w),
-                Text(
-                  'REC',
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.red,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                SizedBox(width: 6.w),
-                Text(
-                  _formatDuration(_recordingSeconds),
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDarkColor,
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: _cancelRecording,
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      color: AppTheme.textMediumColor,
+                  SizedBox(width: 8.w),
+                  // Stop / Done
+                  GestureDetector(
+                    onTap: _stopRecording,
+                    child: Container(
+                      width: 40.r, height: 40.r,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.stop_rounded, color: Colors.white, size: 20.r),
                     ),
                   ),
-                ),
-                SizedBox(width: 8.w),
-                ElevatedButton(
-                  onPressed: _stopRecording,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 8.h,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
-                  ),
-                  child: Text(
-                    'Stop',
-                    style: TextStyle(fontSize: 13.sp, color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         );
         break;
@@ -882,13 +960,19 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
               children: [
                 IconButton(
                   onPressed: _togglePreviewPlayback,
-                  icon: Icon(
-                    _isPlayingPreview
-                        ? Icons.pause_circle_filled_rounded
-                        : Icons.play_circle_filled_rounded,
-                    size: 36.r,
-                    color: AppTheme.primaryColor,
-                  ),
+                  icon: _isLoadingAudio
+                      ? SizedBox(
+                          width: 24.r,
+                          height: 24.r,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
+                        )
+                      : Icon(
+                          _isPlayingPreview
+                              ? Icons.pause_circle_filled_rounded
+                              : Icons.play_circle_filled_rounded,
+                          size: 36.r,
+                          color: AppTheme.primaryColor,
+                        ),
                   padding: EdgeInsets.zero,
                 ),
                 SizedBox(width: 8.w),
@@ -972,13 +1056,19 @@ class _PublishBottomSheetState extends ConsumerState<PublishBottomSheet>
               children: [
                 IconButton(
                   onPressed: _togglePreviewPlayback,
-                  icon: Icon(
-                    _isPlayingPreview
-                        ? Icons.pause_circle_filled_rounded
-                        : Icons.play_circle_filled_rounded,
-                    size: 36.r,
-                    color: Colors.green,
-                  ),
+                  icon: _isLoadingAudio
+                      ? SizedBox(
+                          width: 24.r,
+                          height: 24.r,
+                          child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.green),
+                        )
+                      : Icon(
+                          _isPlayingPreview
+                              ? Icons.pause_circle_filled_rounded
+                              : Icons.play_circle_filled_rounded,
+                          size: 36.r,
+                          color: Colors.green,
+                        ),
                   padding: EdgeInsets.zero,
                 ),
                 SizedBox(width: 8.w),

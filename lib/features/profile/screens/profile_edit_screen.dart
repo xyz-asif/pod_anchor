@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/core/services/cloudinary_service.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
-import 'package:chatbee/features/profile/repos/profile_repo.dart';
+import 'package:chatbee/features/profile/controllers/profile_controller.dart';
+import 'package:chatbee/features/profile/repos/user_repo.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 class ProfileEditScreen extends ConsumerStatefulWidget {
@@ -86,15 +88,16 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         coverURL = result.secureUrl;
       }
 
-      final updatedUser = await ref.read(profileRepoProvider).setupProfile(
+      final updatedUser = await ref.read(userRepoProvider).updateMyProfile(
             displayName: name,
             bio: _bioController.text.trim(),
             externalLink: _linkController.text.trim(),
-            photoURL: photoURL,
-            coverImageURL: coverURL,
+            photoURL: photoURL.isNotEmpty ? photoURL : null,
+            coverImageURL: coverURL.isNotEmpty ? coverURL : null,
           );
 
       ref.read(authControllerProvider.notifier).updateUser(updatedUser);
+      ref.invalidate(profileControllerProvider);
 
       if (mounted) {
         AppSnackbar.show(context,
@@ -157,7 +160,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                           : (_currentCoverURL != null &&
                                   _currentCoverURL!.isNotEmpty
                               ? DecorationImage(
-                                  image: NetworkImage(_currentCoverURL!),
+                                  image: CachedNetworkImageProvider(_currentCoverURL!),
                                   fit: BoxFit.cover)
                               : null),
                     ),
@@ -194,7 +197,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                             backgroundImage: _newPhoto != null
                                 ? FileImage(_newPhoto!) as ImageProvider
                                 : (_currentPhotoURL != null
-                                    ? NetworkImage(_currentPhotoURL!)
+                                    ? CachedNetworkImageProvider(_currentPhotoURL!)
                                     : null),
                             child:
                                 (_newPhoto == null && _currentPhotoURL == null)

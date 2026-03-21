@@ -1,5 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/profile/repos/user_repo.dart';
 
 part 'profile_controller.g.dart';
@@ -7,7 +8,8 @@ part 'profile_controller.g.dart';
 /// Manages the current user's profile state.
 ///
 /// Loads profile on build, supports update (displayName, bio, photoURL).
-@riverpod
+/// keepAlive: true ensures state persists across navigation.
+@Riverpod(keepAlive: true)
 class ProfileController extends _$ProfileController {
   @override
   FutureOr<UserModel?> build() => null;
@@ -21,6 +23,7 @@ class ProfileController extends _$ProfileController {
   }
 
   /// Update profile fields. Only pass the fields you want to change.
+  /// Also syncs to authController so ALL screens see the update.
   Future<void> updateProfile({
     String? displayName,
     String? photoURL,
@@ -28,15 +31,16 @@ class ProfileController extends _$ProfileController {
     String? coverImageURL,
   }) async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(
-      () => ref
-          .read(userRepoProvider)
-          .updateMyProfile(
-            displayName: displayName,
-            photoURL: photoURL,
-            bio: bio,
-            coverImageURL: coverImageURL,
-          ),
-    );
+    state = await AsyncValue.guard(() async {
+      final updated = await ref.read(userRepoProvider).updateMyProfile(
+        displayName: displayName,
+        photoURL: photoURL,
+        bio: bio,
+        coverImageURL: coverImageURL,
+      );
+      // Sync to auth controller so ALL screens see the update
+      ref.read(authControllerProvider.notifier).updateUser(updated);
+      return updated;
+    });
   }
 }

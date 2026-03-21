@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +12,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
+import 'package:chatbee/features/feed/controllers/feed_controller.dart';
+import 'package:chatbee/features/social/providers/social_events.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/social/widgets/comment_bottom_sheet.dart';
@@ -29,23 +33,41 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlayingAudio = false;
 
+  late PoemModel _poem;
   late bool _isLiked;
   late int _likeCount;
   late bool _isReposted;
   late int _repostCount;
+  late int _commentCount;
   bool _isLikeLoading = false;
   bool _isRepostLoading = false;
+  StreamSubscription? _socialSub;
+  StreamSubscription? _audioStateSub;
 
   @override
   void initState() {
     super.initState();
-    _isLiked = widget.poem.isLikedByMe;
-    _likeCount = widget.poem.likesCount;
-    _isReposted = widget.poem.isRepostedByMe;
-    _repostCount = widget.poem.repostsCount;
+    _poem = widget.poem;
+    _isLiked = _poem.isLikedByMe;
+    _likeCount = _poem.likesCount;
+    _isReposted = _poem.isRepostedByMe;
+    _repostCount = _poem.repostsCount;
+    _commentCount = _poem.commentsCount;
+
+    _socialSub = ref.read(socialEventStreamProvider).stream.listen((event) {
+      if (event.poemId == _poem.id && mounted) {
+        setState(() {
+          if (event.isLiked != null) _isLiked = event.isLiked!;
+          if (event.likesCount != null) _likeCount = event.likesCount!;
+          if (event.isReposted != null) _isReposted = event.isReposted!;
+          if (event.repostsCount != null) _repostCount = event.repostsCount!;
+          if (event.commentsCount != null) _commentCount = event.commentsCount!;
+        });
+      }
+    });
 
     try {
-      final doc = Document.fromJson(jsonDecode(widget.poem.contentJson) as List);
+      final doc = Document.fromJson(jsonDecode(_poem.contentJson) as List);
       _quillController = QuillController(
         document: doc,
         selection: const TextSelection.collapsed(offset: 0),
@@ -58,6 +80,8 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
 
   @override
   void dispose() {
+    _socialSub?.cancel();
+    _audioStateSub?.cancel();
     _quillController.dispose();
     _audioPlayer.dispose();
     super.dispose();
@@ -70,11 +94,13 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
       return;
     }
     try {
-      if (widget.poem.audioUrl.isNotEmpty) {
-        await _audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.poem.audioUrl)));
-        await _audioPlayer.play();
+      if (_poem.audioUrl.isNotEmpty) {
+        await _audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(_poem.audioUrl)));
+        _audioPlayer.play();
         setState(() => _isPlayingAudio = true);
-        _audioPlayer.playerStateStream.listen((s) {
+        
+        _audioStateSub?.cancel();
+        _audioStateSub = _audioPlayer.playerStateStream.listen((s) {
           if (s.processingState == ProcessingState.completed) {
             if (mounted) setState(() => _isPlayingAudio = false);
           }
@@ -84,50 +110,73 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
   }
 
   Future<void> _toggleLike() async {
+    HapticFeedback.lightImpact();
+    final wasLiked = _isLiked;
+    final originalCount = _likeCount;
+
     setState(() {
       _isLikeLoading = true;
       _isLiked = !_isLiked;
       _likeCount += _isLiked ? 1 : -1;
     });
     try {
-      final result = await ref.read(socialRepoProvider).togglePoemLike(widget.poem.id);
+      final result = await ref.read(socialRepoProvider).togglePoemLike(_poem.id);
       if (mounted) setState(() { _isLiked = result.liked; _likeCount = result.likesCount; });
+      ref.read(socialEventStreamProvider).emit(SocialEvent(
+          poemId: _poem.id, isLiked: result.liked, likesCount: result.likesCount));
     } catch (_) {
-      if (mounted) setState(() { _isLiked = !_isLiked; _likeCount += _isLiked ? 1 : -1; });
+      if (mounted) setState(() { _isLiked = wasLiked; _likeCount = originalCount; });
     } finally {
       if (mounted) setState(() => _isLikeLoading = false);
     }
   }
 
   Future<void> _toggleRepost() async {
-    setState(() { _isRepostLoading = true; });
+    HapticFeedback.lightImpact();
+    final wasReposted = _isReposted;
+    final originalCount = _repostCount;
+
+    setState(() { _isRepostLoading = true; _isReposted = !_isReposted; _repostCount += _isReposted ? 1 : -1; });
     try {
-      final result = await ref.read(socialRepoProvider).toggleRepost(widget.poem.id);
+      final result = await ref.read(socialRepoProvider).toggleRepost(_poem.id);
       if (mounted) setState(() {
         _isReposted = result.reposted;
         _repostCount = result.repostsCount;
       });
+      ref.read(socialEventStreamProvider).emit(SocialEvent(
+          poemId: _poem.id, isReposted: result.reposted, repostsCount: result.repostsCount));
     } catch (e) {
-      if (mounted) AppSnackbar.show(context, message: e.toString(), type: SnackbarType.error);
+      if (mounted) {
+        setState(() { _isReposted = wasReposted; _repostCount = originalCount; });
+        AppSnackbar.show(context, message: e.toString(), type: SnackbarType.error);
+      }
     } finally {
       if (mounted) setState(() => _isRepostLoading = false);
     }
   }
 
   void _showComments(BuildContext context) {
+    HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => CommentBottomSheet(poemId: widget.poem.id),
+      builder: (_) => CommentBottomSheet(poemId: _poem.id),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final poem = widget.poem;
+    final poem = _poem;
+    Color? bgColor;
+    if (poem.coverColor.isNotEmpty) {
+      try {
+        bgColor = Color(int.parse(poem.coverColor.replaceFirst('#', '0xFF'))).withValues(alpha: 0.1);
+      } catch (_) {}
+    }
 
     return Scaffold(
+      backgroundColor: bgColor ?? AppTheme.surfaceColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -136,10 +185,35 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
           onPressed: () => context.pop(),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share_rounded),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: 'https://chatbee.app/poem/${poem.id}'));
+              AppSnackbar.show(context, message: 'Link copied to clipboard');
+            },
+          ),
           if (ref.watch(authControllerProvider).valueOrNull?.id == poem.author.id)
             IconButton(
               icon: const Icon(Icons.edit_outlined),
-              onPressed: () => context.push('/editor', extra: poem),
+              onPressed: () async {
+                final updatedPoem = await context.push<PoemModel>('/editor', extra: _poem);
+                if (updatedPoem != null && mounted) {
+                  setState(() {
+                    _poem = updatedPoem;
+                    _quillController.dispose();
+                    try {
+                      final doc = Document.fromJson(jsonDecode(_poem.contentJson) as List);
+                      _quillController = QuillController(
+                        document: doc,
+                        selection: const TextSelection.collapsed(offset: 0),
+                        readOnly: true,
+                      );
+                    } catch (_) {
+                      _quillController = QuillController.basic();
+                    }
+                  });
+                }
+              },
             ),
         ],
       ),
@@ -197,7 +271,7 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
                               style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor)),
                           if (poem.createdAt != null) ...[
                             Text(' • ', style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor)),
-                            Text(timeago.format(poem.createdAt!, locale: 'en_short'),
+                            Text(timeago.format(poem.createdAt!.toLocal(), locale: 'en_short'),
                                 style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor)),
                           ],
                         ],
@@ -263,36 +337,79 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
             // ── Audio player if present ──
             if (poem.hasAudio)
               Container(
+                margin: EdgeInsets.only(top: 8.h),
                 padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
                 decoration: BoxDecoration(
                   color: AppTheme.featureBackgroundColor,
-                  borderRadius: BorderRadius.circular(12.r),
+                  borderRadius: BorderRadius.circular(16.r),
                   border: Border.all(color: AppTheme.borderColor),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: _toggleAudio,
-                      icon: Icon(
-                        _isPlayingAudio ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
-                        size: 36.r,
-                        color: AppTheme.primaryColor,
-                      ),
-                      padding: EdgeInsets.zero,
-                    ),
-                    SizedBox(width: 8.w),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Listen to this poem', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500, color: AppTheme.textDarkColor)),
-                        if (poem.audioDuration > 0)
-                          Text(
-                            '${poem.audioDuration ~/ 60}:${(poem.audioDuration % 60).toString().padLeft(2, '0')}',
-                            style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor),
-                          ),
-                      ],
-                    ),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
+                ),
+                child: StreamBuilder<PlayerState>(
+                  stream: _audioPlayer.playerStateStream,
+                  builder: (context, snapshot) {
+                    final processingState = snapshot.data?.processingState;
+                    final playing = snapshot.data?.playing ?? false;
+                    
+                    return Row(
+                      children: [
+                        Container(
+                          width: 44.r,
+                          height: 44.r,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            onPressed: _toggleAudio,
+                            icon: processingState == ProcessingState.buffering
+                                ? const CircularProgressIndicator()
+                                : Icon(
+                                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                    size: 26.r,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                            padding: EdgeInsets.zero,
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: StreamBuilder<Duration>(
+                            stream: _audioPlayer.positionStream,
+                            builder: (context, posSnap) {
+                              final position = posSnap.data ?? Duration.zero;
+                              final durationText = '${(poem.audioDuration ~/ 60)}:${(poem.audioDuration % 60).toString().padLeft(2, '0')}';
+                              final positionText = '${(position.inSeconds ~/ 60)}:${(position.inSeconds % 60).toString().padLeft(2, '0')}';
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Voice Recording', style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor)),
+                                      Text('$positionText / $durationText', style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w500, color: AppTheme.primaryColor)),
+                                    ],
+                                  ),
+                                  SizedBox(height: 4.h),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4.r),
+                                    child: LinearProgressIndicator(
+                                      value: poem.audioDuration > 0 ? position.inSeconds / poem.audioDuration : 0.0,
+                                      backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.2),
+                                      valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                                      minHeight: 4.h,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
 
@@ -302,10 +419,24 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
             if (poem.hashtags.isNotEmpty)
               Wrap(
                 spacing: 8.w,
-                runSpacing: 4.h,
-                children: poem.hashtags.map((tag) => Text(
-                  '#$tag',
-                  style: TextStyle(fontSize: 13.sp, color: AppTheme.primaryColor),
+                runSpacing: 8.h,
+                children: poem.hashtags.map((tag) => GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    ref.read(exploreFeedControllerProvider.notifier).filterByHashtag(tag);
+                    context.go('/explore'); // Switch tab
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                    child: Text(
+                      '#$tag',
+                      style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: AppTheme.primaryColor),
+                    ),
+                  ),
                 )).toList(),
               ),
 
@@ -339,7 +470,7 @@ class _PoemDetailScreenState extends ConsumerState<PoemDetailScreen> {
                     children: [
                       Icon(Icons.chat_bubble_outline_rounded, size: 18.r, color: AppTheme.textLightColor),
                       SizedBox(width: 4.w),
-                      Text('${widget.poem.commentsCount}', style: TextStyle(fontSize: 13.sp, color: AppTheme.textLightColor)),
+                      Text('$_commentCount', style: TextStyle(fontSize: 13.sp, color: AppTheme.textLightColor)),
                     ],
                   ),
                 ),

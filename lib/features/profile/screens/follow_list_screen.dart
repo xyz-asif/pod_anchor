@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/profile/repos/follow_repo.dart';
 import 'package:chatbee/features/profile/models/user_search_result.dart';
+import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 /// Reusable screen for displaying a paginated list of followers or following.
 class FollowListScreen extends ConsumerStatefulWidget {
@@ -44,6 +47,7 @@ class _FollowListScreenState extends ConsumerState<FollowListScreen> {
   }
 
   void _onScroll() {
+    if (!_scrollController.hasClients) return;
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 300 &&
         _hasMore &&
@@ -125,7 +129,8 @@ class _FollowListScreenState extends ConsumerState<FollowListScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: TextStyle(color: Colors.red, fontSize: 14.sp)),
+            Text(_error ?? 'An unexpected error occurred', 
+                style: TextStyle(color: Colors.red, fontSize: 14.sp)),
             SizedBox(height: 8.h),
             TextButton(onPressed: _loadInitial, child: const Text('Retry')),
           ],
@@ -164,10 +169,18 @@ class _FollowListScreenState extends ConsumerState<FollowListScreen> {
             );
           }
           final user = _users[index];
+          
+          // Final safety check for null element
+          // ignore: unnecessary_null_comparison
+          if (user == null) return const SizedBox.shrink();
+
           return ListTile(
             contentPadding:
                 EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
-            onTap: () => context.push('/profile/${user.id}'),
+            onTap: () {
+              HapticFeedback.selectionClick();
+              context.push('/profile/${user.id}');
+            },
             leading: CircleAvatar(
               radius: 22.r,
               backgroundColor: AppTheme.borderColor,
@@ -184,16 +197,99 @@ class _FollowListScreenState extends ConsumerState<FollowListScreen> {
                     )
                   : null,
             ),
-            title: Text(user.displayName,
-                style: TextStyle(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDarkColor)),
-            subtitle: Text('@${user.username}',
-                style: TextStyle(
-                    fontSize: 13.sp, color: AppTheme.textLightColor)),
+            title: Text(
+              user.displayName.isNotEmpty ? user.displayName : 'Unknown',
+              style: TextStyle(
+                  fontSize: 15.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDarkColor),
+            ),
+            subtitle: Text(
+              user.username.isNotEmpty ? '@${user.username}' : '',
+              style: TextStyle(
+                  fontSize: 13.sp, color: AppTheme.textLightColor),
+            ),
+            trailing: _FollowButton(user: user),
           );
         },
+      ),
+    );
+  }
+}
+
+class _FollowButton extends ConsumerStatefulWidget {
+  final UserSearchResult user;
+  const _FollowButton({required this.user});
+
+  @override
+  ConsumerState<_FollowButton> createState() => _FollowButtonState();
+}
+
+class _FollowButtonState extends ConsumerState<_FollowButton> {
+  bool _isLoading = false;
+  late bool _isFollowing;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFollowing = widget.user.isFollowing;
+  }
+
+  Future<void> _toggle() async {
+    if (_isLoading) return;
+    HapticFeedback.selectionClick();
+    setState(() => _isLoading = true);
+    try {
+      final isNowFollowing =
+          await ref.read(followRepoProvider).toggleFollow(widget.user.id);
+      setState(() => _isFollowing = isNowFollowing);
+      
+      // Update counts in AuthController if needed
+      final prevFollowing = widget.user.isFollowing;
+      ref.read(authControllerProvider.notifier).updateFollowingCount(
+            isNowFollowing && !prevFollowing
+                ? 1
+                : (!isNowFollowing && prevFollowing ? -1 : 0),
+          );
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.show(context, message: e.toString(), type: SnackbarType.error);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Hide follow button if it's me
+    final me = ref.watch(authControllerProvider).valueOrNull;
+    if (me == null || me.id == widget.user.id) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 32.h,
+      width: 92.w,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _toggle,
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              _isFollowing ? AppTheme.featureBackgroundColor : AppTheme.primaryColor,
+          foregroundColor: _isFollowing ? AppTheme.textDarkColor : Colors.white,
+          elevation: 0,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.r)),
+        ),
+        child: _isLoading
+            ? SizedBox(
+                width: 12.r,
+                height: 12.r,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _isFollowing ? AppTheme.primaryColor : Colors.white,
+                ))
+            : Text(_isFollowing ? 'Unfollow' : 'Follow',
+                style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold)),
       ),
     );
   }

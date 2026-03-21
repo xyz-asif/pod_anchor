@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +10,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
+import 'package:chatbee/features/feed/controllers/feed_controller.dart';
+import 'package:chatbee/features/social/providers/social_events.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
 import 'package:chatbee/features/social/widgets/comment_bottom_sheet.dart';
 
@@ -25,8 +29,10 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
   late int _likeCount;
   late bool _isReposted;
   late int _repostCount;
+  late int _commentCount;
   late QuillController _quillController;
   bool _isLong = false;
+  StreamSubscription? _socialSub;
 
   @override
   void initState() {
@@ -35,6 +41,19 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
     _likeCount = widget.poem.likesCount;
     _isReposted = widget.poem.isRepostedByMe;
     _repostCount = widget.poem.repostsCount;
+    _commentCount = widget.poem.commentsCount;
+
+    _socialSub = ref.read(socialEventStreamProvider).stream.listen((event) {
+      if (event.poemId == widget.poem.id && mounted) {
+        setState(() {
+          if (event.isLiked != null) _isLiked = event.isLiked!;
+          if (event.likesCount != null) _likeCount = event.likesCount!;
+          if (event.isReposted != null) _isReposted = event.isReposted!;
+          if (event.repostsCount != null) _repostCount = event.repostsCount!;
+          if (event.commentsCount != null) _commentCount = event.commentsCount!;
+        });
+      }
+    });
 
     try {
       final doc = Document.fromJson(jsonDecode(widget.poem.contentJson) as List);
@@ -51,6 +70,7 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
 
   @override
   void dispose() {
+    _socialSub?.cancel();
     _quillController.dispose();
     super.dispose();
   }
@@ -58,6 +78,21 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
   @override
   void didUpdateWidget(PoemGridCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.poem.isLikedByMe != widget.poem.isLikedByMe ||
+        oldWidget.poem.likesCount != widget.poem.likesCount) {
+      _isLiked = widget.poem.isLikedByMe;
+      _likeCount = widget.poem.likesCount;
+    }
+    if (oldWidget.poem.isRepostedByMe != widget.poem.isRepostedByMe ||
+        oldWidget.poem.repostsCount != widget.poem.repostsCount) {
+      _isReposted = widget.poem.isRepostedByMe;
+      _repostCount = widget.poem.repostsCount;
+    }
+    if (oldWidget.poem.commentsCount != widget.poem.commentsCount) {
+      _commentCount = widget.poem.commentsCount;
+    }
+
     if (oldWidget.poem.id != widget.poem.id || oldWidget.poem.contentJson != widget.poem.contentJson) {
       _isLiked = widget.poem.isLikedByMe;
       _likeCount = widget.poem.likesCount;
@@ -81,6 +116,10 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
   }
 
   Future<void> _toggleLike() async {
+    HapticFeedback.lightImpact();
+    final wasLiked = _isLiked;
+    final originalCount = _likeCount;
+
     setState(() {
       _isLiked = !_isLiked;
       _likeCount += _isLiked ? 1 : -1;
@@ -93,17 +132,29 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
           _likeCount = result.likesCount;
         });
       }
+      ref.read(socialEventStreamProvider).emit(SocialEvent(
+          poemId: widget.poem.id, isLiked: result.liked, likesCount: result.likesCount));
+      try { ref.read(homeFeedControllerProvider.notifier).updatePoemSocialState(
+          widget.poem.id, isLiked: result.liked, likesCount: result.likesCount); } catch (_) {}
+      try { ref.read(exploreFeedControllerProvider.notifier).updatePoemSocialState(
+          widget.poem.id, isLiked: result.liked, likesCount: result.likesCount); } catch (_) {}
+      try { ref.read(audioFeedControllerProvider.notifier).updatePoemSocialState(
+          widget.poem.id, isLiked: result.liked, likesCount: result.likesCount); } catch (_) {}
     } catch (_) {
       if (mounted) {
         setState(() {
-          _isLiked = !_isLiked;
-          _likeCount += _isLiked ? 1 : -1;
+          _isLiked = wasLiked;
+          _likeCount = originalCount;
         });
       }
     }
   }
 
   Future<void> _toggleRepost() async {
+    HapticFeedback.lightImpact();
+    final wasReposted = _isReposted;
+    final originalCount = _repostCount;
+
     setState(() {
       _isReposted = !_isReposted;
       _repostCount += _isReposted ? 1 : -1;
@@ -116,17 +167,26 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
           _repostCount = result.repostsCount;
         });
       }
+      ref.read(socialEventStreamProvider).emit(SocialEvent(
+          poemId: widget.poem.id, isReposted: result.reposted, repostsCount: result.repostsCount));
+      try { ref.read(homeFeedControllerProvider.notifier).updatePoemSocialState(
+          widget.poem.id, isReposted: result.reposted, repostsCount: result.repostsCount); } catch (_) {}
+      try { ref.read(exploreFeedControllerProvider.notifier).updatePoemSocialState(
+          widget.poem.id, isReposted: result.reposted, repostsCount: result.repostsCount); } catch (_) {}
+      try { ref.read(audioFeedControllerProvider.notifier).updatePoemSocialState(
+          widget.poem.id, isReposted: result.reposted, repostsCount: result.repostsCount); } catch (_) {}
     } catch (_) {
       if (mounted) {
         setState(() {
-          _isReposted = !_isReposted;
-          _repostCount += _isReposted ? 1 : -1;
+          _isReposted = wasReposted;
+          _repostCount = originalCount;
         });
       }
     }
   }
 
   void _showComments(BuildContext context) {
+    HapticFeedback.selectionClick();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -137,9 +197,14 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        context.push('/poem/${widget.poem.id}', extra: widget.poem);
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceColor,
           borderRadius: BorderRadius.circular(20.r),
           border: Border.all(
             color: AppTheme.borderColor.withValues(alpha: 0.5),
@@ -157,13 +222,10 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top section: Content (Tappable)
+            // Top section: Content
             Expanded(
-              child: GestureDetector(
-                onTap: () => context.push('/poem/${widget.poem.id}', extra: widget.poem),
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(12.w, 14.h, 12.w, 4.h),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(12.w, 14.h, 12.w, 4.h),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -266,8 +328,58 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
                 ),
               ),
             ),
-          ),
-          // Bottom section: Stats
+          if (widget.poem.hasAudio) ...[
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                child: Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
+                  decoration: BoxDecoration(
+                    color: AppTheme.featureBackgroundColor,
+                    borderRadius: BorderRadius.circular(10.r),
+                    border: Border.all(
+                      color: AppTheme.borderColor.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 24.r,
+                        height: 24.r,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          size: 16.r,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      SizedBox(width: 6.w),
+                      Expanded(
+                        child: Text(
+                          'Listen',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDarkColor,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(
+                        Icons.headphones_rounded,
+                        size: 12.r,
+                        color: AppTheme.textLightColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            // Bottom section: Stats
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
             decoration: BoxDecoration(
@@ -289,7 +401,7 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
                 ),
                 _StatItem(
                   icon: Icons.chat_bubble_outline_rounded,
-                  count: widget.poem.commentsCount,
+                  count: _commentCount,
                   color: AppTheme.textLightColor,
                   // Open comment bottom sheet
                   onTap: () => _showComments(context),
@@ -305,7 +417,7 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

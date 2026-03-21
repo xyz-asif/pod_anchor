@@ -4,10 +4,10 @@ class ApiEndpoints {
   ApiEndpoints._();
 
   // Base URL — change per environment
-  // static const String baseUrl = 'http://10.193.113.78:8080/api/v1';
-  // static const String baseUrl = 'http://192.168.1.132:8080/api/v1';
-  static const String baseUrl = 'http://asifs-macbook-air.local:8080/api/v1';
-  // static const String baseUrl = 'https://YOUR_NGROK_URL.ngrok.io/api/v1';
+  // Change this line in your ApiEndpoints class:
+
+  // static const String baseUrl = 'http://asifs-macbook-air.local:8080/api/v1';
+  static const String baseUrl = 'https://glacial-filiberto-cespitosely.ngrok-free.dev/api/v1';
 
   // ── Users ──
   static const String usersMe = '/users/me';
@@ -94,7 +94,7 @@ class ApiEndpoints {
   // ── WebSocket ──
   static const String webSocket = '/chat/ws';
   static const String chatDisconnect = '/chat/disconnect';
-  
+
   /// ⚠️ SECURITY: Token is in the URL query string. NEVER log the output of this method.
   /// Long-term: migrate to first-message auth to keep token out of URLs.
   static String webSocketUrl(String token) {

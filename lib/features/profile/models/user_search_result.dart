@@ -8,16 +8,16 @@ class UserSearchResult {
 
   const UserSearchResult({
     required this.id,
-    required this.displayName,
-    required this.username,
-    required this.photoURL,
+    this.displayName = '',
+    this.username = '',
+    this.photoURL = '',
     this.isEditor = false,
     this.isFollowing = false,
   });
 
   factory UserSearchResult.fromJson(Map<String, dynamic> json) {
     return UserSearchResult(
-      id: json['id'] as String? ?? '',
+      id: json['id'] as String? ?? json['_id'] as String? ?? '',
       displayName: json['displayName'] as String? ?? '',
       username: json['username'] as String? ?? '',
       photoURL: json['photoURL'] as String? ?? '',
@@ -34,9 +34,12 @@ class UserSearchPage {
   const UserSearchPage({required this.users, required this.hasMore});
 
   factory UserSearchPage.fromJson(Map<String, dynamic> json) {
-    final list = json['users'] as List? ?? [];
+    final usersList = json['users'] as List? ??
+        json['followers'] as List? ??
+        json['following'] as List? ??
+        [];
     return UserSearchPage(
-      users: list
+      users: usersList
           .map((e) => UserSearchResult.fromJson(e as Map<String, dynamic>))
           .toList(),
       hasMore: json['hasMore'] as bool? ?? false,

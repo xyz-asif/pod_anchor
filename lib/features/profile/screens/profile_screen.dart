@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +16,15 @@ import 'package:chatbee/features/profile/repos/follow_repo.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/widgets/poem_grid_card.dart';
 import 'package:chatbee/features/poems/widgets/repost_card.dart';
+import 'package:chatbee/features/profile/models/public_profile_model.dart';
+
+/// Provider for fetching own follow counts - autoDispose ensures it refreshes when needed
+/// but only re-fetches when auth user changes, not on every rebuild.
+final ownFollowCountsProvider = FutureProvider.autoDispose<PublicProfileModel?>((ref) async {
+  final user = ref.watch(authControllerProvider).valueOrNull;
+  if (user == null) return null;
+  return ref.read(followRepoProvider).getPublicProfile(user.id);
+});
 
 /// Redesigned Profile screen — Instagram-style with tabs for poems, reposts, drafts
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -28,18 +38,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with TickerProviderStateMixin {
   bool _isUploadingImage = false;
   bool _isUploadingCover = false;
-  final _nameController = TextEditingController();
-  final _bioController = TextEditingController();
   final _imagePicker = ImagePicker();
   late TabController _tabController;
 
   List<PoemModel> _reposts = [];
   bool _isLoadingReposts = true;
-
-  // Follow counts fetched from the public profile endpoint,
-  // since /users/me does not return these fields.
-  int? _followersCount;
-  int? _followingCount;
 
   @override
   void initState() {
@@ -50,26 +53,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         _loadReposts();
       }
     });
-    // Fetch accurate follow counts from the public profile endpoint
-    _loadFollowCounts();
-  }
-
-  Future<void> _loadFollowCounts() async {
-    final user = ref.read(authControllerProvider).valueOrNull;
-    if (user == null) return;
-    try {
-      final profile = await ref
-          .read(followRepoProvider)
-          .getPublicProfile(user.id);
-      if (mounted) {
-        setState(() {
-          _followersCount = profile.followersCount;
-          _followingCount = profile.followingCount;
-        });
-      }
-    } catch (_) {
-      // Fall back to the user model counts (which may be 0)
-    }
   }
 
   Future<void> _loadReposts() async {
@@ -90,14 +73,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _bioController.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
   /// Pick image from gallery and upload to Cloudinary for profile photo
   Future<void> _pickAndUploadImage() async {
+    HapticFeedback.selectionClick();
     try {
       final pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -146,6 +128,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   /// Pick image for cover photo
   Future<void> _pickAndUploadCoverImage() async {
+    HapticFeedback.selectionClick();
     try {
       final pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -192,6 +175,62 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     }
   }
 
+  Future<void> _showLogoutConfirmation() async {
+    HapticFeedback.mediumImpact();
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        title: Text(
+          'Logout',
+          style: TextStyle(
+            fontSize: 20.sp,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textDarkColor,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to sign out?',
+          style: TextStyle(
+            fontSize: 16.sp,
+            color: AppTheme.textMediumColor,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMediumColor,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Logout',
+              style: TextStyle(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w700,
+                color: Colors.red,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      ref.read(authControllerProvider.notifier).signOut();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Side effects
@@ -208,6 +247,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final profileState = ref.watch(profileControllerProvider);
     final authUser = ref.watch(authControllerProvider).valueOrNull;
     final user = profileState.valueOrNull ?? authUser;
+    
+    // Watch follow counts from provider - only re-fetches when auth user changes
+    final countsAsync = ref.watch(ownFollowCountsProvider);
+    final ownProfile = countsAsync.valueOrNull;
 
     return Scaffold(
       body: user == null
@@ -259,20 +302,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                             ),
                           ),
                           // Gradient overlay
-                          Container(
-                            height: 220.h,
-                            // decoration: BoxDecoration(
-                            //   gradient: LinearGradient(
-                            //     begin: Alignment.topCenter,
-                            //     end: Alignment.bottomCenter,
-                            //     colors: [
-                            //       Colors.black.withValues(alpha: 0.3),
-                            //       Colors.transparent,
-                            //       AppTheme.surfaceColor.withValues(alpha: 0.8),
-                            //       AppTheme.surfaceColor,
-                            //     ],
-                            //   ),
-                            // ),
+                          IgnorePointer(
+                            child: Container(
+                              height: 220.h,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withValues(alpha: 0.3),
+                                    Colors.transparent,
+                                    AppTheme.surfaceColor.withValues(alpha: 0.8),
+                                    AppTheme.surfaceColor,
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                           // Cover photo upload indicator
                           if (_isUploadingCover)
@@ -285,22 +330,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                 ),
                               ),
                             ),
-                          // Settings Button, Username Title & Edit Button
+                          // Username Title & Edit Button
                           Positioned(
                             top: 40.h,
                             left: 0,
                             right: 0,
                             child: Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.settings_rounded,
-                                    color: Colors.white,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.logout_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed: _showLogoutConfirmation,
                                   ),
-                                  onPressed: () =>
-                                      context.push('/profile/edit'),
-                                ),
-                                Expanded(
+                                  Expanded(
                                   child: Center(
                                     child: Text(
                                       '@${user.username ?? 'username'}',
@@ -317,8 +361,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                     Icons.edit_rounded,
                                     color: Colors.white,
                                   ),
-                                  onPressed: () =>
-                                      context.push('/profile/edit'),
+                                  onPressed: () {
+                                    HapticFeedback.selectionClick();
+                                    context.push('/profile/edit');
+                                  },
                                 ),
                               ],
                             ),
@@ -422,24 +468,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                           value: user.postsCount,
                                         ),
                                         GestureDetector(
-                                          onTap: () => context.push(
-                                            '/profile/${user.id}/followers',
-                                          ),
+                                          onTap: () {
+                                            HapticFeedback.selectionClick();
+                                            context.push(
+                                              '/profile/${user.id}/followers',
+                                            );
+                                          },
                                           child: _StatItem(
                                             label: 'Followers',
                                             value:
-                                                _followersCount ??
+                                                ownProfile?.followersCount ??
                                                 user.followersCount,
                                           ),
                                         ),
                                         GestureDetector(
-                                          onTap: () => context.push(
-                                            '/profile/${user.id}/following',
-                                          ),
+                                          onTap: () {
+                                            HapticFeedback.selectionClick();
+                                            context.push(
+                                              '/profile/${user.id}/following',
+                                            );
+                                          },
                                           child: _StatItem(
                                             label: 'Following',
                                             value:
-                                                _followingCount ??
+                                                ownProfile?.followingCount ??
                                                 user.followingCount,
                                           ),
                                         ),
@@ -488,6 +540,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                     alpha: 0.8,
                                   ),
                                   height: 1.5,
+                                ),
+                              ),
+                            ],
+                            if (user.externalLink?.isNotEmpty ?? false) ...[
+                              SizedBox(height: 8.h),
+                              GestureDetector(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  AppSnackbar.show(
+                                    context,
+                                    message: 'Opening ${user.externalLink}',
+                                    type: SnackbarType.info,
+                                  );
+                                },
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.link_rounded,
+                                      size: 16.r,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                    SizedBox(width: 4.w),
+                                    Text(
+                                      user.externalLink!,
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        color: AppTheme.primaryColor,
+                                        fontWeight: FontWeight.w600,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -674,60 +758,66 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           itemCount: drafts.length,
           itemBuilder: (context, index) {
             final poem = drafts[index];
-            return Container(
-              margin: EdgeInsets.only(bottom: 12.h),
-              padding: EdgeInsets.all(16.w),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceColor,
-                borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(color: AppTheme.borderColor),
-              ),
-              child: Row(
-                children: [
-                  // Draft indicator
-                  Container(
-                    padding: EdgeInsets.all(8.r),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryLight.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8.r),
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                context.push('/editor', extra: poem);
+              },
+              child: Container(
+                margin: EdgeInsets.only(bottom: 12.h),
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceColor,
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                child: Row(
+                  children: [
+                    // Draft indicator
+                    Container(
+                      padding: EdgeInsets.all(8.r),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryLight.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                      child: Icon(
+                        Icons.edit_document,
+                        size: 20.r,
+                        color: AppTheme.primaryColor,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.edit_document,
-                      size: 20.r,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
+                    SizedBox(width: 12.w),
 
-                  // Poem info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          poem.title.isNotEmpty ? poem.title : 'Untitled Draft',
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textDarkColor,
+                    // Poem info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            poem.title.isNotEmpty ? poem.title : 'Untitled Draft',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textDarkColor,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          poem.plainText.isNotEmpty
-                              ? poem.plainText
-                              : 'Empty draft...',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            color: AppTheme.textMediumColor,
+                          SizedBox(height: 4.h),
+                          Text(
+                            poem.plainText.isNotEmpty
+                                ? poem.plainText
+                                : 'Empty draft...',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: AppTheme.textMediumColor,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },

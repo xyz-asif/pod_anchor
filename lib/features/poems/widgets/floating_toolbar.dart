@@ -6,11 +6,13 @@ import 'package:chatbee/features/poems/widgets/color_picker_dialog.dart';
 class FloatingToolbar extends StatelessWidget {
   final QuillController controller;
   final VoidCallback? onMoreOptions;
+  final TextSelection? savedSelection;
 
   const FloatingToolbar({
     super.key,
     required this.controller,
     this.onMoreOptions,
+    this.savedSelection,
   });
 
   @override
@@ -97,37 +99,43 @@ class FloatingToolbar extends StatelessWidget {
   }
 
   // Format getters
-  bool get _isBold {
+  TextSelection? get _effectiveSelection {
     final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return false;
+    if (sel.isValid && !sel.isCollapsed) return sel;
+    return savedSelection;
+  }
+
+  bool get _isBold {
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return false;
     final attrs = controller.getSelectionStyle();
     return attrs.containsKey(Attribute.bold.key);
   }
 
   bool get _isItalic {
-    final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return false;
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return false;
     final attrs = controller.getSelectionStyle();
     return attrs.containsKey(Attribute.italic.key);
   }
 
   bool get _isUnderline {
-    final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return false;
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return false;
     final attrs = controller.getSelectionStyle();
     return attrs.containsKey(Attribute.underline.key);
   }
 
   bool get _isStrikethrough {
-    final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return false;
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return false;
     final attrs = controller.getSelectionStyle();
     return attrs.containsKey(Attribute.strikeThrough.key);
   }
 
   Color _getTextColor() {
-    final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return Colors.white;
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return Colors.white;
     final attrs = controller.getSelectionStyle();
     final colorAttr = attrs.attributes[Attribute.color.key];
     if (colorAttr != null && colorAttr.value != null) {
@@ -143,8 +151,8 @@ class FloatingToolbar extends StatelessWidget {
   }
 
   Color _getHighlightColor() {
-    final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return Colors.transparent;
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return Colors.transparent;
     final attrs = controller.getSelectionStyle();
     final bgAttr = attrs.attributes[Attribute.background.key];
     if (bgAttr != null && bgAttr.value != null) {
@@ -160,30 +168,41 @@ class FloatingToolbar extends StatelessWidget {
   }
 
   bool _hasCustomSize() {
-    final sel = controller.selection;
-    if (!sel.isValid || sel.isCollapsed) return false;
+    final sel = _effectiveSelection;
+    if (sel == null || !sel.isValid || sel.isCollapsed) return false;
     final attrs = controller.getSelectionStyle();
     return attrs.containsKey(Attribute.size.key);
+  }
+
+  void _restoreSelectionIfNeeded() {
+    final sel = controller.selection;
+    if (sel.isCollapsed && savedSelection != null && !savedSelection!.isCollapsed) {
+      controller.updateSelection(savedSelection!, ChangeSource.local);
+    }
   }
 
   // Toggle actions
   void _toggleBold() {
     HapticFeedback.lightImpact();
+    _restoreSelectionIfNeeded();
     controller.formatSelection(Attribute.bold);
   }
 
   void _toggleItalic() {
     HapticFeedback.lightImpact();
+    _restoreSelectionIfNeeded();
     controller.formatSelection(Attribute.italic);
   }
 
   void _toggleUnderline() {
     HapticFeedback.lightImpact();
+    _restoreSelectionIfNeeded();
     controller.formatSelection(Attribute.underline);
   }
 
   void _toggleStrikethrough() {
     HapticFeedback.lightImpact();
+    _restoreSelectionIfNeeded();
     controller.formatSelection(Attribute.strikeThrough);
   }
 
@@ -194,12 +213,22 @@ class FloatingToolbar extends StatelessWidget {
       builder: (context) => ColorPickerDialog(
         initialColor: _getTextColor(),
         onColorSelected: (color) {
+          _restoreSelectionIfNeeded();
+          final selection = controller.selection;
           if (color == Colors.transparent) {
             controller
                 .formatSelection(Attribute.clone(Attribute.color, null));
           } else {
             final hex = '#${color.value.toRadixString(16).substring(2)}';
             controller.formatSelection(ColorAttribute(hex));
+          }
+
+          if (!selection.isCollapsed) {
+            controller.updateSelection(
+              TextSelection.collapsed(offset: selection.end),
+              ChangeSource.local,
+            );
+            controller.formatSelection(Attribute.clone(Attribute.color, null));
           }
         },
       ),
@@ -213,12 +242,22 @@ class FloatingToolbar extends StatelessWidget {
         initialColor: _getHighlightColor(),
         isForHighlight: true,
         onColorSelected: (color) {
+          _restoreSelectionIfNeeded();
+          final selection = controller.selection;
           if (color == Colors.transparent) {
             controller.formatSelection(
                 Attribute.clone(Attribute.background, null));
           } else {
             final hex = '#${color.value.toRadixString(16).substring(2)}';
             controller.formatSelection(BackgroundAttribute(hex));
+          }
+
+          if (!selection.isCollapsed) {
+            controller.updateSelection(
+              TextSelection.collapsed(offset: selection.end),
+              ChangeSource.local,
+            );
+            controller.formatSelection(Attribute.clone(Attribute.background, null));
           }
         },
       ),
@@ -234,15 +273,22 @@ class FloatingToolbar extends StatelessWidget {
       {'label': 'Huge', 'value': 'huge'},
     ];
 
+    final size = MediaQuery.of(context).size;
     showMenu(
       context: context,
-      position: const RelativeRect.fromLTRB(100, 100, 0, 0),
+      position: RelativeRect.fromLTRB(
+        size.width / 2,
+        size.height / 2,
+        size.width / 2,
+        size.height / 2,
+      ),
       items: sizes.map((size) {
         return PopupMenuItem<String?>(
-          value: size['value'] as String?,
+          value: size['value'],
           child: Text(size['label'] as String),
           onTap: () {
             HapticFeedback.lightImpact();
+            _restoreSelectionIfNeeded();
             if (size['value'] == null) {
               controller
                   .formatSelection(Attribute.clone(Attribute.size, null));

@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/social/providers/social_events.dart';
 import 'package:chatbee/features/social/models/comment_model.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
@@ -19,19 +20,22 @@ class CommentBottomSheet extends ConsumerStatefulWidget {
   ConsumerState<CommentBottomSheet> createState() => _CommentBottomSheetState();
 }
 
-class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
+class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> with AutomaticKeepAliveClientMixin {
   final TextEditingController _inputController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  final GlobalKey<_CommentInputBarState> _inputBarKey = GlobalKey();
 
   List<CommentModel> _comments = [];
   bool _isLoading = true;
   bool _isSending = false;
-  bool _hasMore = false;
 
-  // @mention suggestion state
-  List<String> _mentionSuggestions = [];
+  // @mention suggestion state - use ValueNotifier to avoid rebuilding entire sheet
+  final ValueNotifier<List<String>> _suggestionsNotifier = ValueNotifier([]);
   String _currentMentionQuery = '';
   Timer? _mentionDebounce;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -45,6 +49,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
     _inputController.dispose();
     _inputFocusNode.dispose();
     _mentionDebounce?.cancel();
+    _suggestionsNotifier.dispose();
     super.dispose();
   }
 
@@ -54,7 +59,6 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
       if (mounted) {
         setState(() {
           _comments = page.comments;
-          _hasMore = page.hasMore;
           _isLoading = false;
         });
       }
@@ -74,8 +78,10 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
       if (mounted) {
         setState(() {
           _comments.insert(0, comment);
-          _mentionSuggestions = [];
         });
+        _suggestionsNotifier.value = [];
+        ref.read(socialEventStreamProvider).emit(SocialEvent(
+            poemId: widget.poemId, commentsCount: _comments.length));
       }
     } catch (e) {
       if (mounted) AppSnackbar.show(context, message: 'Failed to post comment', type: SnackbarType.error);
@@ -87,7 +93,11 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
   Future<void> _deleteComment(CommentModel comment) async {
     try {
       await ref.read(socialRepoProvider).deleteComment(comment.id);
-      if (mounted) setState(() => _comments.removeWhere((c) => c.id == comment.id));
+      if (mounted) {
+        setState(() => _comments.removeWhere((c) => c.id == comment.id));
+        ref.read(socialEventStreamProvider).emit(SocialEvent(
+            poemId: widget.poemId, commentsCount: _comments.length));
+      }
     } catch (_) {}
   }
 
@@ -121,23 +131,38 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
   void _onInputChanged() {
     final text = _inputController.text;
     final cursor = _inputController.selection.baseOffset;
-    if (cursor < 0) return;
+    if (cursor < 0 || cursor > text.length) return;
 
     final textBeforeCursor = text.substring(0, cursor);
     final atIndex = textBeforeCursor.lastIndexOf('@');
 
     if (atIndex >= 0) {
       final query = textBeforeCursor.substring(atIndex + 1);
+      // Only search if query has content and no spaces (still typing a username)
       if (!query.contains(' ') && query.isNotEmpty) {
+        // Don't setState here — only update when results arrive
         _currentMentionQuery = query;
         _mentionDebounce?.cancel();
         _mentionDebounce = Timer(const Duration(milliseconds: 300), () => _fetchMentionSuggestions(query));
         return;
       }
+      // User typed @ but no query yet, or query has a space — just clear if needed
+      if (query.isEmpty && !query.contains(' ')) {
+        // Just typed @ — don't do anything, wait for more characters
+        _mentionDebounce?.cancel();
+        if (_suggestionsNotifier.value.isNotEmpty) {
+          _suggestionsNotifier.value = [];
+          _currentMentionQuery = '';
+        }
+        return;
+      }
     }
 
-    if (_mentionSuggestions.isNotEmpty) {
-      setState(() { _mentionSuggestions = []; _currentMentionQuery = ''; });
+    // No @ context — clear suggestions only if they were showing
+    if (_suggestionsNotifier.value.isNotEmpty || _currentMentionQuery.isNotEmpty) {
+      _mentionDebounce?.cancel();
+      _suggestionsNotifier.value = [];
+      _currentMentionQuery = '';
     }
   }
 
@@ -145,7 +170,11 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
     try {
       final response = await ref.read(socialRepoProvider).searchUsersForMention(query);
       if (mounted && _currentMentionQuery == query) {
-        setState(() => _mentionSuggestions = response);
+        _suggestionsNotifier.value = response;
+        // Request focus back after the frame builds to keep keyboard open
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _inputFocusNode.requestFocus();
+        });
       }
     } catch (_) {}
   }
@@ -163,11 +192,17 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
         selection: TextSelection.collapsed(offset: atIndex + username.length + 2),
       );
     }
-    setState(() { _mentionSuggestions = []; _currentMentionQuery = ''; });
+    _suggestionsNotifier.value = [];
+    _currentMentionQuery = '';
+    // Ensure focus returns to input after inserting mention
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _inputFocusNode.requestFocus();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
 
     return DraggableScrollableSheet(
@@ -299,76 +334,113 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                 ),
 
                 // ── Mention suggestions ──
-                if (_mentionSuggestions.isNotEmpty)
-                  Container(
-                    constraints: BoxConstraints(maxHeight: 160.h),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceColor,
-                      border: Border(top: BorderSide(color: AppTheme.borderColor)),
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _mentionSuggestions.length,
-                      itemBuilder: (_, i) => ListTile(
-                        dense: true,
-                        title: Text('@${_mentionSuggestions[i]}',
-                            style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor)),
-                        onTap: () => _insertMention(_mentionSuggestions[i]),
+                ValueListenableBuilder<List<String>>(
+                  valueListenable: _suggestionsNotifier,
+                  builder: (context, suggestions, child) {
+                    if (suggestions.isEmpty) return const SizedBox.shrink();
+                    return Container(
+                      constraints: BoxConstraints(maxHeight: 160.h),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceColor,
+                        border: Border(top: BorderSide(color: AppTheme.borderColor)),
                       ),
-                    ),
-                  ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: suggestions.length,
+                        itemBuilder: (_, i) => ListTile(
+                          dense: true,
+                          title: Text('@${suggestions[i]}',
+                              style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor)),
+                          onTap: () => _insertMention(suggestions[i]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
 
-                // ── Input bar ──
-                Container(
-                  padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, MediaQuery.of(context).viewInsets.bottom + 12.h),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceColor,
-                    border: Border(top: BorderSide(color: AppTheme.borderColor)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _inputController,
-                          focusNode: _inputFocusNode,
-                          maxLines: 3,
-                          minLines: 1,
-                          style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor),
-                          decoration: InputDecoration(
-                            hintText: 'Add a comment... use @username to mention',
-                            hintStyle: TextStyle(fontSize: 13.sp, color: AppTheme.textLightColor),
-                            filled: true,
-                            fillColor: AppTheme.featureBackgroundColor,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(20.r),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      GestureDetector(
-                        onTap: _isSending ? null : _sendComment,
-                        child: Container(
-                          width: 40.r, height: 40.r,
-                          decoration: const BoxDecoration(color: AppTheme.primaryColor, shape: BoxShape.circle),
-                          child: _isSending
-                              ? Padding(
-                                  padding: EdgeInsets.all(10.r),
-                                  child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : Icon(Icons.send_rounded, color: Colors.white, size: 18.r),
-                        ),
-                      ),
-                    ],
-                  ),
+                // ── Input bar (extracted to maintain focus) ──
+                _CommentInputBar(
+                  key: _inputBarKey,
+                  controller: _inputController,
+                  focusNode: _inputFocusNode,
+                  isSending: _isSending,
+                  onSend: _sendComment,
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// Extracted input bar widget to maintain focus state across parent rebuilds
+class _CommentInputBar extends StatefulWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool isSending;
+  final VoidCallback onSend;
+
+  const _CommentInputBar({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.isSending,
+    required this.onSend,
+  });
+
+  @override
+  State<_CommentInputBar> createState() => _CommentInputBarState();
+}
+
+class _CommentInputBarState extends State<_CommentInputBar> {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, MediaQuery.of(context).viewInsets.bottom + 12.h),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        border: Border(top: BorderSide(color: AppTheme.borderColor)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: widget.controller,
+              focusNode: widget.focusNode,
+              maxLines: 3,
+              minLines: 1,
+              style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor),
+              decoration: InputDecoration(
+                hintText: 'Add a comment... use @username to mention',
+                hintStyle: TextStyle(fontSize: 13.sp, color: AppTheme.textLightColor),
+                filled: true,
+                fillColor: AppTheme.featureBackgroundColor,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20.r),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          GestureDetector(
+            onTap: widget.isSending ? null : widget.onSend,
+            child: Container(
+              width: 40.r, height: 40.r,
+              decoration: const BoxDecoration(color: AppTheme.primaryColor, shape: BoxShape.circle),
+              child: widget.isSending
+                  ? Padding(
+                      padding: EdgeInsets.all(10.r),
+                      child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : Icon(Icons.send_rounded, color: Colors.white, size: 18.r),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -109,21 +109,21 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile/:id',
         builder: (context, state) {
-          final userId = state.pathParameters['id']!;
+          final userId = state.pathParameters['id'] ?? '';
           return OtherProfileScreen(userId: userId);
         },
       ),
       GoRoute(
         path: '/profile/:id/followers',
         builder: (context, state) {
-          final userId = state.pathParameters['id']!;
+          final userId = state.pathParameters['id'] ?? '';
           return FollowListScreen(userId: userId, isFollowers: true);
         },
       ),
       GoRoute(
         path: '/profile/:id/following',
         builder: (context, state) {
-          final userId = state.pathParameters['id']!;
+          final userId = state.pathParameters['id'] ?? '';
           return FollowListScreen(userId: userId, isFollowers: false);
         },
       ),
