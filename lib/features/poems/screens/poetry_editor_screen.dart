@@ -88,6 +88,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   bool _isPlayingPreview = false;
   bool _isRecordingPaused = false;
   bool _isLoadingAudio = false;
+  bool _hasEdits = false;
   StreamSubscription? _audioPlayerSub;
 
   // ── Pulse animation for recording ──
@@ -152,7 +153,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
     // Word count listener
     _documentChangesSub = _quillController.document.changes.listen((_) {
-      if (mounted) setState(() {});
+      _hasEdits = true;
       _countDebounce?.cancel();
       _countDebounce = Timer(const Duration(milliseconds: 300), () {
         if (mounted) _updateCounts();
@@ -166,7 +167,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
-    )..repeat(reverse: true);
+    );
     _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -221,7 +222,6 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   }
 
   bool get _hasUnsavedChanges {
-    final currentDelta = jsonEncode(_quillController.document.toDelta().toJson());
     final currentTitle = _titleController.text.trim();
 
     if (_currentPoem == null) {
@@ -229,6 +229,10 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
              currentTitle.isNotEmpty;
     }
 
+    // Quick check: if no document edits and title unchanged, skip expensive delta comparison
+    if (!_hasEdits && currentTitle == _currentPoem!.title.trim()) return false;
+
+    final currentDelta = jsonEncode(_quillController.document.toDelta().toJson());
     return currentDelta != _currentPoem!.contentJson ||
            currentTitle != _currentPoem!.title.trim();
   }
@@ -289,6 +293,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       final dir = await getTemporaryDirectory();
       final path = '${dir.path}/poem_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+      _pulseController.repeat(reverse: true);
       setState(() {
         _audioState = AudioState.recording;
         _recordingPath = path;
@@ -307,6 +312,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   Future<void> _stopRecording() async {
     _recordingTimer?.cancel();
+    _pulseController.stop();
     final path = await _recorder.stop();
     if (path == null || path.isEmpty) {
       if (mounted) {
@@ -330,6 +336,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   Future<void> _cancelRecording() async {
     _recordingTimer?.cancel();
+    _pulseController.stop();
     await _recorder.cancel();
     setState(() {
       _audioState = AudioState.idle;
