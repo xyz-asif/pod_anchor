@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_quill/flutter_quill.dart';
-import 'package:google_fonts/google_fonts.dart';
+
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
@@ -279,7 +279,8 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
                                   scrollPhysics: const NeverScrollableScrollPhysics(),
                                   customStyles: DefaultStyles(
                                     paragraph: DefaultTextBlockStyle(
-                                      GoogleFonts.lato(
+                                      TextStyle(
+                                        fontFamily: 'PlayfairDisplay',
                                         fontSize: 12.sp,
                                         color: AppTheme.textDarkColor.withValues(alpha: 0.7),
                                         height: 1.2,

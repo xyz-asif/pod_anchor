@@ -23,6 +23,24 @@ class PoemAuthor {
 }
 
 @JsonSerializable()
+class MentionedUser {
+  final String id;
+  final String username;
+  final String displayName;
+  final String photoURL;
+
+  const MentionedUser({
+    required this.id,
+    required this.username,
+    required this.displayName,
+    required this.photoURL,
+  });
+
+  factory MentionedUser.fromJson(Map<String, dynamic> json) => _$MentionedUserFromJson(json);
+  Map<String, dynamic> toJson() => _$MentionedUserToJson(this);
+}
+
+@JsonSerializable()
 class PoemModel {
   final String id;
   final PoemAuthor author;
@@ -40,6 +58,12 @@ class PoemModel {
   final int audioDuration;    // seconds
   @JsonKey(defaultValue: '')
   final String coverColor;
+  @JsonKey(defaultValue: '')
+  final String description;
+  @JsonKey(defaultValue: 'left')
+  final String textAlign;
+  @JsonKey(defaultValue: [])
+  final List<MentionedUser> mentions;
   final int likesCount;
   final int commentsCount;
   final int repostsCount;
@@ -66,6 +90,9 @@ class PoemModel {
     this.audioUrl = '',
     this.audioDuration = 0,
     this.coverColor = '',
+    this.description = '',
+    this.textAlign = 'left',
+    this.mentions = const [],
     this.likesCount = 0,
     this.commentsCount = 0,
     this.repostsCount = 0,
@@ -97,6 +124,9 @@ class PoemModel {
     String? audioUrl,
     int? audioDuration,
     String? coverColor,
+    String? description,
+    String? textAlign,
+    List<MentionedUser>? mentions,
     int? likesCount,
     int? commentsCount,
     int? repostsCount,
@@ -120,6 +150,9 @@ class PoemModel {
       audioUrl: audioUrl ?? this.audioUrl,
       audioDuration: audioDuration ?? this.audioDuration,
       coverColor: coverColor ?? this.coverColor,
+      description: description ?? this.description,
+      textAlign: textAlign ?? this.textAlign,
+      mentions: mentions ?? this.mentions,
       likesCount: likesCount ?? this.likesCount,
       commentsCount: commentsCount ?? this.commentsCount,
       repostsCount: repostsCount ?? this.repostsCount,

@@ -23,6 +23,22 @@ Map<String, dynamic> _$PoemAuthorToJson(PoemAuthor instance) =>
       'isEditor': instance.isEditor,
     };
 
+MentionedUser _$MentionedUserFromJson(Map<String, dynamic> json) =>
+    MentionedUser(
+      id: json['id'] as String,
+      username: json['username'] as String,
+      displayName: json['displayName'] as String,
+      photoURL: json['photoURL'] as String,
+    );
+
+Map<String, dynamic> _$MentionedUserToJson(MentionedUser instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'username': instance.username,
+      'displayName': instance.displayName,
+      'photoURL': instance.photoURL,
+    };
+
 PoemModel _$PoemModelFromJson(Map<String, dynamic> json) => PoemModel(
   id: json['id'] as String,
   author: PoemAuthor.fromJson(json['author'] as Map<String, dynamic>),
@@ -38,6 +54,13 @@ PoemModel _$PoemModelFromJson(Map<String, dynamic> json) => PoemModel(
   audioUrl: json['audioUrl'] as String? ?? '',
   audioDuration: (json['audioDuration'] as num?)?.toInt() ?? 0,
   coverColor: json['coverColor'] as String? ?? '',
+  description: json['description'] as String? ?? '',
+  textAlign: json['textAlign'] as String? ?? 'left',
+  mentions:
+      (json['mentions'] as List<dynamic>?)
+          ?.map((e) => MentionedUser.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      [],
   likesCount: (json['likesCount'] as num?)?.toInt() ?? 0,
   commentsCount: (json['commentsCount'] as num?)?.toInt() ?? 0,
   repostsCount: (json['repostsCount'] as num?)?.toInt() ?? 0,
@@ -68,6 +91,9 @@ Map<String, dynamic> _$PoemModelToJson(PoemModel instance) => <String, dynamic>{
   'audioUrl': instance.audioUrl,
   'audioDuration': instance.audioDuration,
   'coverColor': instance.coverColor,
+  'description': instance.description,
+  'textAlign': instance.textAlign,
+  'mentions': instance.mentions,
   'likesCount': instance.likesCount,
   'commentsCount': instance.commentsCount,
   'repostsCount': instance.repostsCount,

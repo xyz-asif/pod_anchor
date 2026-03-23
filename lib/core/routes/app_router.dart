@@ -15,9 +15,8 @@ import 'package:chatbee/features/profile/screens/follow_list_screen.dart';
 import 'package:chatbee/features/feed/screens/explore_screen.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/screens/my_poems_screen.dart';
-import 'package:chatbee/features/poems/screens/poem_detail_screen.dart';
 import 'package:chatbee/features/poems/screens/poetry_editor_screen.dart';
-import 'package:chatbee/features/poems/screens/poem_detail_fetch_wrapper.dart';
+import 'package:chatbee/features/poems/screens/poem_standalone_screen.dart';
 
 /// Global navigator key — used by NotificationService to navigate from outside widget tree.
 final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -84,13 +83,9 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/poem/:id',
         builder: (context, state) {
-          final poem = state.extra as PoemModel?;
           final poemId = state.pathParameters['id']!;
-          if (poem != null) {
-            return PoemDetailScreen(poem: poem);
-          }
-          // Fallback for deep links / notifications / process restoration
-          return PoemDetailFetchWrapper(poemId: poemId);
+          final poem = state.extra as PoemModel?;
+          return PoemStandaloneScreen(poemId: poemId, poem: poem);
         },
       ),
 

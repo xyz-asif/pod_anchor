@@ -11,6 +11,7 @@ import 'package:chatbee/features/poems/repos/poem_repo.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/widgets/poem_grid_card.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
+import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
@@ -197,6 +198,10 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
       final room = await ref
           .read(chatRepoProvider)
           .getOrCreateDirectRoom(widget.userId);
+      
+      // Add room to chat list so ChatScreen can find it immediately
+      ref.read(chatListControllerProvider.notifier).upsertRoom(room);
+          
       if (mounted) context.push('/chat/${room.id}');
     } catch (e) {
       if (mounted) {

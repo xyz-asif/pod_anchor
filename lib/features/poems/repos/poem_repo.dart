@@ -17,6 +17,8 @@ class CreatePoemRequest {
   final String audioUrl;
   final int audioDuration;
   final String coverColor;
+  final String description;
+  final String textAlign;
 
   const CreatePoemRequest({
     required this.title,
@@ -29,6 +31,8 @@ class CreatePoemRequest {
     this.audioUrl = '',
     this.audioDuration = 0,
     this.coverColor = '',
+    this.description = '',
+    this.textAlign = 'left',
   });
 
   Map<String, dynamic> toJson() => {
@@ -42,6 +46,8 @@ class CreatePoemRequest {
     'audioUrl': audioUrl,
     'audioDuration': audioDuration,
     'coverColor': coverColor,
+    'description': description,
+    'textAlign': textAlign,
   };
 }
 
