@@ -134,9 +134,9 @@ flutter:
           weight: 500
         - asset: assets/fonts/Cera-Pro-Bold.otf
           weight: 700
-    - family: PlayfairDisplay
+    - family: JosefinSans
       fonts:
-        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
+        - asset: assets/fonts/JosefinSans-Regular.ttf
           weight: 400
-        - asset: assets/fonts/PlayfairDisplay-Medium.ttf
+        - asset: assets/fonts/JosefinSans-Medium.ttf
           weight: 500

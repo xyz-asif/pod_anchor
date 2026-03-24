@@ -49,4 +49,14 @@ mixin FeedControllerMixin {
     if (index < 0) return; // Poem not in this feed — skip
     state = AsyncValue.data(List.from(current)..[index] = updatedPoem);
   }
+
+  /// Remove a poem from the feed list (e.g. after deletion).
+  void removePoem(String poemId) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    final filtered = current.where((p) => p.id != poemId).toList();
+    if (filtered.length != current.length) {
+      state = AsyncValue.data(filtered);
+    }
+  }
 }

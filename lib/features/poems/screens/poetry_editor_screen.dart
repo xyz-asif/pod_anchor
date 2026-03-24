@@ -478,6 +478,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     try {
       await ref.read(poemRepoProvider).deletePoem(widget.poemId!);
       ref.read(myPoemsControllerProvider.notifier).removePoem(widget.poemId!);
+      try { ref.read(homeFeedControllerProvider.notifier).removePoem(widget.poemId!); } catch (_) {}
+      try { ref.read(exploreFeedControllerProvider.notifier).removePoem(widget.poemId!); } catch (_) {}
+      try { ref.read(audioFeedControllerProvider.notifier).removePoem(widget.poemId!); } catch (_) {}
       if (mounted) {
         AppSnackbar.show(context, message: 'Poem deleted', type: SnackbarType.success);
         context.pop();
@@ -953,7 +956,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
         focusNode: _titleFocusNode,
         textAlign: _textAlignEnum,
         style: TextStyle(
-          fontFamily: 'PlayfairDisplay',
+          fontFamily: 'JosefinSans',
           fontSize: 28.sp,
           fontWeight: FontWeight.w500,
           color: textColor,
@@ -963,7 +966,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
         decoration: InputDecoration(
           hintText: 'Title',
           hintStyle: TextStyle(
-            fontFamily: 'PlayfairDisplay',
+            fontFamily: 'JosefinSans',
             fontSize: 28.sp,
             fontWeight: FontWeight.w500,
             color: textColor.withValues(alpha: 0.4),
@@ -999,7 +1002,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
             customStyles: DefaultStyles(
               paragraph: DefaultTextBlockStyle(
                 TextStyle(
-                  fontFamily: 'PlayfairDisplay',
+                  fontFamily: 'JosefinSans',
                   fontSize: 18.sp,
                   height: 1.2,
                   color: Theme.of(context).colorScheme.onSurface,
@@ -1011,7 +1014,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
               ),
               placeHolder: DefaultTextBlockStyle(
                 TextStyle(
-                  fontFamily: 'PlayfairDisplay',
+                  fontFamily: 'JosefinSans',
                   fontSize: 18.sp,
                   height: 1.2,
                   color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),

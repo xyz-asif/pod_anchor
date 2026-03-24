@@ -5,16 +5,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
-import 'package:chatbee/features/profile/repos/follow_repo.dart';
 import 'package:chatbee/features/profile/models/public_profile_model.dart';
-import 'package:chatbee/features/poems/repos/poem_repo.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/widgets/poem_grid_card.dart';
-import 'package:chatbee/features/chat/repos/chat_repo.dart';
-import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
-import 'package:chatbee/features/auth/controllers/auth_controller.dart';
-import 'package:chatbee/features/social/repos/social_repo.dart';
+import 'package:chatbee/features/profile/controllers/other_profile_controller.dart';
 import 'package:chatbee/features/poems/widgets/repost_card.dart';
 
 class OtherProfileScreen extends ConsumerStatefulWidget {
@@ -28,15 +23,6 @@ class OtherProfileScreen extends ConsumerStatefulWidget {
 
 class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     with TickerProviderStateMixin {
-  PublicProfileModel? _profile;
-  List<PoemModel> _poems = [];
-  List<PoemModel> _reposts = [];
-  bool _isLoadingProfile = true;
-  bool _isLoadingPoems = true;
-  bool _isLoadingReposts = true;
-  bool _isFollowLoading = false;
-  bool _isChatLoading = false;
-  String? _error;
   late TabController _tabController;
 
   @override
@@ -44,22 +30,10 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.index == 1 && _isLoadingReposts) {
-        _loadReposts();
+      if (_tabController.index == 1) {
+        ref.read(otherProfileControllerProvider(widget.userId).notifier).loadReposts();
       }
     });
-    _load();
-  }
-
-  @override
-  void didUpdateWidget(OtherProfileScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId) {
-      _isLoadingProfile = true;
-      _isLoadingPoems = true;
-      _isLoadingReposts = true;
-      _load();
-    }
   }
 
   @override
@@ -68,174 +42,35 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     super.dispose();
   }
 
-  Future<void> _loadReposts() async {
-    try {
-      final page = await ref
-          .read(socialRepoProvider)
-          .getUserReposts(widget.userId);
-      if (mounted) {
-        setState(() {
-          _reposts = page.poems;
-          _isLoadingReposts = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingReposts = false);
-    }
-  }
-
-  Future<void> _load() async {
-    // Load profile first — this is required
-    try {
-      var profile = await ref
-          .read(followRepoProvider)
-          .getPublicProfile(widget.userId);
-
-      // Backend bug: sometimes followersCount is returned as 0 even when we are following.
-      // If we are following them, their follower count should be at least 1.
-      if (profile.isFollowedByMe && profile.followersCount == 0) {
-        profile = profile.copyWith(followersCount: 1);
-      }
-
-      if (mounted) {
-        setState(() {
-          _profile = profile;
-          _isLoadingProfile = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoadingProfile = false;
-        });
-      }
-      return; // Can't show anything without profile
-    }
-
-    // Load poems separately — failure here shouldn't block the profile
-    try {
-      final page = await ref.read(poemRepoProvider).getUserPoems(widget.userId);
-      if (mounted) {
-        setState(() {
-          _poems = page.poems;
-          _isLoadingPoems = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _isLoadingPoems = false);
-      }
-    }
-  }
-
-  Future<void> _toggleFollow() async {
-    HapticFeedback.mediumImpact();
-    if (_profile == null || _isFollowLoading) return;
-    
-    final prevFollowing = _profile!.isFollowedByMe;
-    final prevCount = _profile!.followersCount;
-    
-    // Optimistic update - flip state immediately
-    setState(() {
-      _isFollowLoading = true;
-      _profile = _profile!.copyWith(
-        isFollowedByMe: !prevFollowing,
-        followersCount: prevFollowing 
-            ? (prevCount - 1).clamp(0, 999999) 
-            : prevCount + 1,
-      );
-    });
-    
-    try {
-      final isNowFollowing = await ref
-          .read(followRepoProvider)
-          .toggleFollow(widget.userId);
-      
-      // Reconcile with server truth
-      int newCount = prevCount;
-      if (isNowFollowing && !prevFollowing) newCount += 1;
-      else if (!isNowFollowing && prevFollowing) newCount -= 1;
-      if (newCount < 0) newCount = 0;
-
-      setState(() {
-        _profile = _profile!.copyWith(
-          isFollowedByMe: isNowFollowing,
-          followersCount: newCount,
-        );
-      });
-      
-      // Update own following count
-      ref.read(authControllerProvider.notifier).updateFollowingCount(
-        isNowFollowing && !prevFollowing ? 1 : (!isNowFollowing && prevFollowing ? -1 : 0),
-      );
-    } catch (e) {
-      // Rollback on error
-      if (mounted) {
-        setState(() {
-          _profile = _profile!.copyWith(
-            isFollowedByMe: prevFollowing,
-            followersCount: prevCount,
-          );
-        });
-        AppSnackbar.show(
-          context,
-          message: e.toString(),
-          type: SnackbarType.error,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isFollowLoading = false);
-    }
-  }
-
-  Future<void> _openChat() async {
-    HapticFeedback.selectionClick();
-    if (_isChatLoading) return;
-    setState(() => _isChatLoading = true);
-    try {
-      // getOrCreateDirectRoom — no connection required (guard removed in Phase 2)
-      final room = await ref
-          .read(chatRepoProvider)
-          .getOrCreateDirectRoom(widget.userId);
-      
-      // Add room to chat list so ChatScreen can find it immediately
-      ref.read(chatListControllerProvider.notifier).upsertRoom(room);
-          
-      if (mounted) context.push('/chat/${room.id}');
-    } catch (e) {
-      if (mounted) {
-        AppSnackbar.show(
-          context,
-          message: 'Could not open chat',
-          type: SnackbarType.error,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isChatLoading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingProfile) {
+    // Listen for errors from the controller
+    ref.listen<OtherProfileState>(
+      otherProfileControllerProvider(widget.userId),
+      (previous, next) {
+        if (next.error != null && next.error != previous?.error) {
+          AppSnackbar.show(context, message: next.error!, type: SnackbarType.error);
+        }
+      },
+    );
+
+    final state = ref.watch(otherProfileControllerProvider(widget.userId));
+
+    if (state.isLoadingProfile) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (_error != null || _profile == null) {
-      return Scaffold(body: Center(child: Text(_error ?? 'Profile not found')));
+    if (state.error != null || state.profile == null) {
+      return Scaffold(body: Center(child: Text(state.error ?? 'Profile not found')));
     }
 
-    final profile = _profile!;
+    final profile = state.profile!;
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
-          _isLoadingProfile = true;
-          _isLoadingPoems = true;
-          _isLoadingReposts = true;
-          await _load();
+          await ref.read(otherProfileControllerProvider(widget.userId).notifier).refresh();
           if (_tabController.index == 1) {
-            await _loadReposts();
+            await ref.read(otherProfileControllerProvider(widget.userId).notifier).loadReposts();
           }
         },
         child: NestedScrollView(
@@ -489,9 +324,9 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                         SizedBox(height: 16.h),
                         Row(
                           children: [
-                            Expanded(child: _buildFollowButton(profile)),
+                            Expanded(child: _buildFollowButton(profile, state.isFollowLoading)),
                             SizedBox(width: 10.w),
-                            Expanded(child: _buildChatButton()),
+                            Expanded(child: _buildChatButton(state.isChatLoading)),
                           ],
                         ),
                       ],
@@ -522,16 +357,22 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
         ],
         body: TabBarView(
           controller: _tabController,
-          children: [_buildPoemsTab(), _buildRepostsTab()],
+          children: [
+            _buildPoemsTab(state.poems, state.isLoadingPoems),
+            _buildRepostsTab(state.reposts, state.isLoadingReposts),
+          ],
         ),
       ),
     ),
   );
 }
 
-  Widget _buildFollowButton(PublicProfileModel profile) {
+  Widget _buildFollowButton(PublicProfileModel profile, bool isFollowLoading) {
     return ElevatedButton(
-      onPressed: _isFollowLoading ? null : _toggleFollow,
+      onPressed: isFollowLoading ? null : () {
+        HapticFeedback.mediumImpact();
+        ref.read(otherProfileControllerProvider(widget.userId).notifier).toggleFollow();
+      },
       style: ElevatedButton.styleFrom(
         backgroundColor: profile.isFollowedByMe
             ? AppTheme.featureBackgroundColor
@@ -545,7 +386,7 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
           borderRadius: BorderRadius.circular(12.r),
         ),
       ),
-      child: _isFollowLoading
+      child: isFollowLoading
           ? SizedBox(
               width: 16.r,
               height: 16.r,
@@ -563,9 +404,15 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     );
   }
 
-  Widget _buildChatButton() {
+  Widget _buildChatButton(bool isChatLoading) {
     return OutlinedButton(
-      onPressed: _openChat,
+      onPressed: isChatLoading ? null : () async {
+        HapticFeedback.selectionClick();
+        try {
+          final room = await ref.read(otherProfileControllerProvider(widget.userId).notifier).openChat();
+          if (mounted) context.push('/chat/${room.id}');
+        } catch (_) {}
+      },
       style: OutlinedButton.styleFrom(
         side: BorderSide(color: AppTheme.borderColor),
         foregroundColor: AppTheme.textDarkColor,
@@ -574,7 +421,7 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
           borderRadius: BorderRadius.circular(12.r),
         ),
       ),
-      child: _isChatLoading
+      child: isChatLoading
           ? SizedBox(
               width: 16.r,
               height: 16.r,
@@ -587,11 +434,11 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     );
   }
 
-  Widget _buildPoemsTab() {
-    if (_isLoadingPoems) {
+  Widget _buildPoemsTab(List<PoemModel> poems, bool isLoading) {
+    if (isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final publicPoems = _poems.where((p) => p.visibility == 'public').toList();
+    final publicPoems = poems.where((p) => p.visibility == 'public').toList();
     if (publicPoems.isEmpty) {
       return Center(
         child: Text(
@@ -613,11 +460,11 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     );
   }
 
-  Widget _buildRepostsTab() {
-    if (_isLoadingReposts) {
+  Widget _buildRepostsTab(List<PoemModel> reposts, bool isLoading) {
+    if (isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_reposts.isEmpty) {
+    if (reposts.isEmpty) {
       return Center(
         child: Text(
           'No reposts yet',
@@ -627,8 +474,8 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     }
     return ListView.builder(
       padding: EdgeInsets.zero,
-      itemCount: _reposts.length,
-      itemBuilder: (_, i) => RepostCard(repost: _reposts[i]),
+      itemCount: reposts.length,
+      itemBuilder: (_, i) => RepostCard(repost: reposts[i]),
     );
   }
 }

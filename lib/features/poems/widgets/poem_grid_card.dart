@@ -280,7 +280,7 @@ class _PoemGridCardState extends ConsumerState<PoemGridCard> {
                                   customStyles: DefaultStyles(
                                     paragraph: DefaultTextBlockStyle(
                                       TextStyle(
-                                        fontFamily: 'PlayfairDisplay',
+                                        fontFamily: 'JosefinSans',
                                         fontSize: 12.sp,
                                         color: AppTheme.textDarkColor.withValues(alpha: 0.7),
                                         height: 1.2,

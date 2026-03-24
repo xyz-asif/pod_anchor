@@ -15,8 +15,7 @@ import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/repos/poem_repo.dart';
 import 'package:chatbee/features/poems/controllers/poem_controller.dart';
 import 'package:chatbee/features/feed/controllers/feed_controller.dart';
-import 'package:chatbee/features/social/providers/social_events.dart';
-import 'package:chatbee/features/social/repos/social_repo.dart';
+import 'package:chatbee/features/social/controllers/social_action_controller.dart';
 import 'package:chatbee/features/social/widgets/comment_bottom_sheet.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
@@ -32,15 +31,14 @@ class PoemCard extends ConsumerStatefulWidget {
 }
 
 class _PoemCardState extends ConsumerState<PoemCard> {
+  // Optimistic UI state — mirrors widget.poem but allows instant feedback
   late bool _isLiked;
   late int _likeCount;
   late bool _isReposted;
   late int _repostCount;
-  late int _commentCount;
   bool _isLikeLoading = false;
   bool _isRepostLoading = false;
   late QuillController _quillController;
-  StreamSubscription? _socialSub;
 
   // Audio seekbar state
   AudioPlayer? _audioPlayer;
@@ -59,19 +57,6 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     _likeCount = widget.poem.likesCount;
     _isReposted = widget.poem.isRepostedByMe;
     _repostCount = widget.poem.repostsCount;
-    _commentCount = widget.poem.commentsCount;
-
-    _socialSub = ref.read(socialEventStreamProvider).stream.listen((event) {
-      if (event.poemId == widget.poem.id && mounted) {
-        setState(() {
-          if (event.isLiked != null) _isLiked = event.isLiked!;
-          if (event.likesCount != null) _likeCount = event.likesCount!;
-          if (event.isReposted != null) _isReposted = event.isReposted!;
-          if (event.repostsCount != null) _repostCount = event.repostsCount!;
-          if (event.commentsCount != null) _commentCount = event.commentsCount!;
-        });
-      }
-    });
 
     _initQuillController();
   }
@@ -115,7 +100,6 @@ class _PoemCardState extends ConsumerState<PoemCard> {
 
   @override
   void dispose() {
-    _socialSub?.cancel();
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
     _audioDurationSub?.cancel();
@@ -137,18 +121,20 @@ class _PoemCardState extends ConsumerState<PoemCard> {
   void didUpdateWidget(PoemCard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.poem.isLikedByMe != widget.poem.isLikedByMe ||
-        oldWidget.poem.likesCount != widget.poem.likesCount) {
-      _isLiked = widget.poem.isLikedByMe;
-      _likeCount = widget.poem.likesCount;
+    // Sync optimistic state with upstream (feed controller) changes
+    if (!_isLikeLoading) {
+      if (oldWidget.poem.isLikedByMe != widget.poem.isLikedByMe ||
+          oldWidget.poem.likesCount != widget.poem.likesCount) {
+        _isLiked = widget.poem.isLikedByMe;
+        _likeCount = widget.poem.likesCount;
+      }
     }
-    if (oldWidget.poem.isRepostedByMe != widget.poem.isRepostedByMe ||
-        oldWidget.poem.repostsCount != widget.poem.repostsCount) {
-      _isReposted = widget.poem.isRepostedByMe;
-      _repostCount = widget.poem.repostsCount;
-    }
-    if (oldWidget.poem.commentsCount != widget.poem.commentsCount) {
-      _commentCount = widget.poem.commentsCount;
+    if (!_isRepostLoading) {
+      if (oldWidget.poem.isRepostedByMe != widget.poem.isRepostedByMe ||
+          oldWidget.poem.repostsCount != widget.poem.repostsCount) {
+        _isReposted = widget.poem.isRepostedByMe;
+        _repostCount = widget.poem.repostsCount;
+      }
     }
 
     if (oldWidget.poem.id != widget.poem.id) {
@@ -240,6 +226,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     final wasLiked = _isLiked;
     final originalCount = _likeCount;
 
+    // Optimistic UI
     setState(() {
       _isLikeLoading = true;
       _isLiked = !_isLiked;
@@ -247,50 +234,14 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     });
     try {
       final result = await ref
-          .read(socialRepoProvider)
-          .togglePoemLike(widget.poem.id);
+          .read(socialActionControllerProvider.notifier)
+          .toggleLike(widget.poem.id);
       if (mounted) {
         setState(() {
           _isLiked = result.liked;
           _likeCount = result.likesCount;
         });
       }
-      ref
-          .read(socialEventStreamProvider)
-          .emit(
-            SocialEvent(
-              poemId: widget.poem.id,
-              isLiked: result.liked,
-              likesCount: result.likesCount,
-            ),
-          );
-      try {
-        ref
-            .read(homeFeedControllerProvider.notifier)
-            .updatePoemSocialState(
-              widget.poem.id,
-              isLiked: result.liked,
-              likesCount: result.likesCount,
-            );
-      } catch (_) {}
-      try {
-        ref
-            .read(exploreFeedControllerProvider.notifier)
-            .updatePoemSocialState(
-              widget.poem.id,
-              isLiked: result.liked,
-              likesCount: result.likesCount,
-            );
-      } catch (_) {}
-      try {
-        ref
-            .read(audioFeedControllerProvider.notifier)
-            .updatePoemSocialState(
-              widget.poem.id,
-              isLiked: result.liked,
-              likesCount: result.likesCount,
-            );
-      } catch (_) {}
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -308,6 +259,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     final wasReposted = _isReposted;
     final originalCount = _repostCount;
 
+    // Optimistic UI
     setState(() {
       _isRepostLoading = true;
       _isReposted = !_isReposted;
@@ -315,7 +267,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     });
     try {
       final result = await ref
-          .read(socialRepoProvider)
+          .read(socialActionControllerProvider.notifier)
           .toggleRepost(widget.poem.id);
       if (mounted) {
         setState(() {
@@ -323,42 +275,6 @@ class _PoemCardState extends ConsumerState<PoemCard> {
           _repostCount = result.repostsCount;
         });
       }
-      ref
-          .read(socialEventStreamProvider)
-          .emit(
-            SocialEvent(
-              poemId: widget.poem.id,
-              isReposted: result.reposted,
-              repostsCount: result.repostsCount,
-            ),
-          );
-      try {
-        ref
-            .read(homeFeedControllerProvider.notifier)
-            .updatePoemSocialState(
-              widget.poem.id,
-              isReposted: result.reposted,
-              repostsCount: result.repostsCount,
-            );
-      } catch (_) {}
-      try {
-        ref
-            .read(exploreFeedControllerProvider.notifier)
-            .updatePoemSocialState(
-              widget.poem.id,
-              isReposted: result.reposted,
-              repostsCount: result.repostsCount,
-            );
-      } catch (_) {}
-      try {
-        ref
-            .read(audioFeedControllerProvider.notifier)
-            .updatePoemSocialState(
-              widget.poem.id,
-              isReposted: result.reposted,
-              repostsCount: result.repostsCount,
-            );
-      } catch (_) {}
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -429,8 +345,9 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     if (confirmed != true) return;
 
     try {
-      await ref.read(poemRepoProvider).deletePoem(widget.poem.id);
-      ref.read(myPoemsControllerProvider.notifier).removePoem(widget.poem.id);
+      await ref
+          .read(socialActionControllerProvider.notifier)
+          .deletePoem(widget.poem.id);
       if (mounted) {
         AppSnackbar.show(
           context,
@@ -508,6 +425,26 @@ class _PoemCardState extends ConsumerState<PoemCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(height: 8.h),
+        if (widget.poem.hashtags.isNotEmpty) ...[
+          // SizedBox(height: 12.h),
+          Wrap(
+            spacing: 8.w,
+            runSpacing: 4.h,
+            children: widget.poem.hashtags
+                .take(5)
+                .map(
+                  (tag) => Text(
+                    '#$tag',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
         RichText(text: TextSpan(children: spans)),
         SizedBox(height: 8.h),
         Divider(color: AppTheme.borderColor.withValues(alpha: 0.5), height: 1),
@@ -673,67 +610,64 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 icon: Icon(
-                    Icons.more_horiz,
-                    size: 20.r,
-                    color: AppTheme.textLightColor,
-                  ),
-                  color: AppTheme.surfaceColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                  onSelected: (value) {
-                    switch (value) {
-                      case 'edit':
-                        context.push('/editor', extra: widget.poem);
-                        break;
-                      case 'delete':
-                        _deletePoem();
-                        break;
-                      case 'report':
-                        AppSnackbar.show(
-                          context,
-                          message: 'Report submitted',
-                          type: SnackbarType.success,
-                        );
-                        break;
-                      case 'plagiarism':
-                        AppSnackbar.show(
-                          context,
-                          message: 'Plagiarism check coming soon',
-                          type: SnackbarType.info,
-                        );
-                        break;
-                      case 'share':
-                        AppSnackbar.show(
-                          context,
-                          message: 'Sharing coming soon',
-                          type: SnackbarType.info,
-                        );
-                        break;
-                    }
-                  },
-                  itemBuilder: (ctx) => [
-                    if (isOwnPoem) ...[
-                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Text(
-                          'Delete',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ] else ...[
-                      const PopupMenuItem(
-                        value: 'report',
-                        child: Text('Report'),
-                      ),
-                    ],
-                    const PopupMenuItem(
-                      value: 'plagiarism',
-                      child: Text('Check Plagiarism'),
-                    ),
-                  ],
+                  Icons.more_horiz,
+                  size: 20.r,
+                  color: AppTheme.textLightColor,
                 ),
+                color: AppTheme.surfaceColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      context.push('/editor', extra: widget.poem);
+                      break;
+                    case 'delete':
+                      _deletePoem();
+                      break;
+                    case 'report':
+                      AppSnackbar.show(
+                        context,
+                        message: 'Report submitted',
+                        type: SnackbarType.success,
+                      );
+                      break;
+                    case 'plagiarism':
+                      AppSnackbar.show(
+                        context,
+                        message: 'Plagiarism check coming soon',
+                        type: SnackbarType.info,
+                      );
+                      break;
+                    case 'share':
+                      AppSnackbar.show(
+                        context,
+                        message: 'Sharing coming soon',
+                        type: SnackbarType.info,
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  if (isOwnPoem) ...[
+                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Text(
+                        'Delete',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ] else ...[
+                    const PopupMenuItem(value: 'report', child: Text('Report')),
+                  ],
+                  const PopupMenuItem(
+                    value: 'plagiarism',
+                    child: Text('Check Plagiarism'),
+                  ),
+                ],
+              ),
             ],
           ),
 
@@ -753,7 +687,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                   widget.poem.title,
                   textAlign: _textAlignEnum,
                   style: TextStyle(
-                    fontFamily: 'PlayfairDisplay',
+                    fontFamily: 'JosefinSans',
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w500,
                     letterSpacing: -0.2,
@@ -776,9 +710,10 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                 customStyles: DefaultStyles(
                   paragraph: DefaultTextBlockStyle(
                     TextStyle(
-                      fontFamily: 'PlayfairDisplay',
+                      fontFamily: 'JosefinSans',
                       fontSize: 15.sp,
-                      color: AppTheme.textDarkColor.withValues(alpha: 0.8),
+                      color: AppTheme.textDarkColor.withValues(alpha: 0.85),
+                      // color: AppTheme.textDarkColor.withValues(alpha: 0.8),
                       height: 1.2,
                       letterSpacing: 0.1,
                     ),
@@ -802,9 +737,9 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                   '— @${widget.poem.author.username}',
                   textAlign: _textAlignEnum,
                   style: TextStyle(
-                    fontFamily: 'PlayfairDisplay',
+                    fontFamily: 'JosefinSans',
                     fontSize: 14.sp,
-                    fontStyle: FontStyle.italic,
+                    fontStyle: FontStyle.normal,
                     color: AppTheme.textMediumColor,
                   ),
                 ),
@@ -812,26 +747,26 @@ class _PoemCardState extends ConsumerState<PoemCard> {
             ),
 
           // ── Hashtags ──
-          if (widget.poem.hashtags.isNotEmpty) ...[
-            SizedBox(height: 12.h),
-            Wrap(
-              spacing: 8.w,
-              runSpacing: 4.h,
-              children: widget.poem.hashtags
-                  .take(5)
-                  .map(
-                    (tag) => Text(
-                      '#$tag',
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ],
+          // if (widget.poem.hashtags.isNotEmpty) ...[
+          //   SizedBox(height: 12.h),
+          //   Wrap(
+          //     spacing: 8.w,
+          //     runSpacing: 4.h,
+          //     children: widget.poem.hashtags
+          //         .take(5)
+          //         .map(
+          //           (tag) => Text(
+          //             '#$tag',
+          //             style: TextStyle(
+          //               fontSize: 13.sp,
+          //               fontWeight: FontWeight.w500,
+          //               color: AppTheme.primaryColor,
+          //             ),
+          //           ),
+          //         )
+          //         .toList(),
+          //   ),
+          // ],
 
           // ── Audio seekbar ──
           _buildAudioSeekbar(),
@@ -884,7 +819,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                     ),
                     SizedBox(width: 4.w),
                     Text(
-                      '$_commentCount',
+                      '${widget.poem.commentsCount}',
                       style: TextStyle(
                         fontSize: 13.sp,
                         color: AppTheme.textLightColor,
@@ -961,7 +896,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     return GestureDetector(
       onTap: () => context.push('/profile/${widget.poem.author.id}'),
       child: CircleAvatar(
-        radius: 18.r,
+        radius: 17.r,
         backgroundColor: AppTheme.borderColor,
         backgroundImage: widget.poem.author.photoURL.isNotEmpty
             ? CachedNetworkImageProvider(widget.poem.author.photoURL)
@@ -988,60 +923,60 @@ class _PoemCardState extends ConsumerState<PoemCard> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-                Flexible(
-                  child: Text(
-                    widget.poem.author.displayName,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDarkColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (widget.poem.author.isEditor) ...[
-                  SizedBox(width: 4.w),
-                  Icon(
-                    Icons.verified_rounded,
-                    size: 14.r,
-                    color: AppTheme.primaryColor,
-                  ),
-                ],
-              ],
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '@${widget.poem.author.username}',
+              Flexible(
+                child: Text(
+                  widget.poem.author.displayName,
                   style: TextStyle(
-                    fontSize: 12.sp,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDarkColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (widget.poem.author.isEditor) ...[
+                SizedBox(width: 4.w),
+                Icon(
+                  Icons.verified_rounded,
+                  size: 14.r,
+                  color: AppTheme.primaryColor,
+                ),
+              ],
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '@${widget.poem.author.username}',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: AppTheme.textLightColor,
+                ),
+              ),
+              if (widget.poem.createdAt != null) ...[
+                SizedBox(width: 6.w),
+                Text(
+                  '•',
+                  style: TextStyle(
+                    fontSize: 10.sp,
                     color: AppTheme.textLightColor,
                   ),
                 ),
-                if (widget.poem.createdAt != null) ...[
-                  SizedBox(width: 6.w),
-                  Text(
-                    '•',
-                    style: TextStyle(
-                      fontSize: 10.sp,
-                      color: AppTheme.textLightColor,
-                    ),
+                SizedBox(width: 6.w),
+                Text(
+                  timeago.format(widget.poem.createdAt!, locale: 'en_short'),
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    color: AppTheme.textLightColor,
                   ),
-                  SizedBox(width: 6.w),
-                  Text(
-                    timeago.format(widget.poem.createdAt!, locale: 'en_short'),
-                    style: TextStyle(
-                      fontSize: 11.sp,
-                      color: AppTheme.textLightColor,
-                    ),
-                  ),
-                ],
+                ),
               ],
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

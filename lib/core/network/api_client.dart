@@ -37,30 +37,30 @@ class ApiClient {
       ),
     );
 
+    // Auto-refresh interceptor: catches 401, refreshes Firebase token, retries
     _dio.interceptors.add(
       InterceptorsWrapper(
         onError: (error, handler) async {
           if (error.response?.statusCode == 401) {
-            // Prevent infinite retry loop: only retry once per request
-            if (error.requestOptions.extra['_retried'] == true) {
-              return handler.next(error);
-            }
-            error.requestOptions.extra['_retried'] = true;
-
             try {
-              final firebaseUser = FirebaseAuth.instance.currentUser;
-              if (firebaseUser != null) {
-                final newToken = await firebaseUser.getIdToken(true); // force refresh
+              final user = FirebaseAuth.instance.currentUser;
+              if (user != null) {
+                final newToken = await user.getIdToken(true);
                 if (newToken != null) {
+                  // Update stored token
                   await setToken(newToken);
-                  // Retry the failed request with new token
-                  error.requestOptions.headers['Authorization'] = 'Bearer $newToken';
-                  final response = await _dio.fetch(error.requestOptions);
+
+                  // Retry the failed request with the fresh token
+                  final opts = error.requestOptions;
+                  opts.headers['Authorization'] = 'Bearer $newToken';
+                  final response = await _dio.fetch(opts);
                   return handler.resolve(response);
                 }
               }
-            } catch (_) {
-              // Refresh failed — let the 401 propagate normally
+            } catch (refreshError) {
+              // Token refresh failed — user's Firebase session is gone
+              // Let the original 401 propagate so the UI can handle it
+              log('[API] Token auto-refresh failed: $refreshError', name: 'API_CLIENT');
             }
           }
           return handler.next(error);

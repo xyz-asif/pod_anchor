@@ -78,36 +78,48 @@ class AuthController extends _$AuthController {
   Future<void> restoreSession() async {
     final repo = ref.read(authRepoProvider);
     final apiClient = ref.read(apiClientProvider);
-    
-    // If no Firebase user AND no token in API client, we are truly logged out
+
+    // No Firebase user AND no stored token → truly logged out
     if (!repo.isSignedIn && !apiClient.hasToken) return;
+
+    // Firebase session is gone but we have a stale stored token → clean up
+    if (!repo.isSignedIn && apiClient.hasToken) {
+      log('Firebase session expired, clearing stale token', name: 'AUTH');
+      await apiClient.clearToken();
+      ref.read(authNotifierProvider).logout();
+      return;
+    }
 
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      try {
-        // 1. Refresh token if Firebase session exists
-        if (repo.isSignedIn) {
-          await repo.refreshToken();
-        }
-        
-        // 2. Fetch profile from backend (uses token currently in ApiClient)
-        final user = await repo.getMyProfile();
+      // 1. Force-refresh the Firebase token (the key fix)
+      await repo.refreshToken();
 
-        // 3. Reconnect WebSocket using existing token
-        final token = repo.isSignedIn 
-            ? await repo.getIdToken() 
-            : apiClient.currentToken;
-            
-        if (token != null) {
-          ref.read(webSocketServiceProvider).connect(token);
-        }
+      // 2. Fetch profile from backend with the fresh token
+      final user = await repo.getMyProfile();
 
-        return user;
-      } catch (e) {
-        log('Session restore failed: $e', name: 'AUTH');
-        rethrow;
+      // 3. Reconnect WebSocket with the fresh token
+      final token = await repo.getIdToken();
+      if (token != null) {
+        ref.read(webSocketServiceProvider).connect(token);
       }
+
+      return user;
     });
+
+    // If restore failed, check if it's an auth issue → force logout
+    if (state.hasError) {
+      final error = state.error.toString();
+      if (error.contains('Invalid token') ||
+          error.contains('401') ||
+          error.contains('INVALID_ID_TOKEN') ||
+          error.contains('USER_NOT_FOUND')) {
+        log('Auth failure during restore, forcing logout', name: 'AUTH');
+        await apiClient.clearToken();
+        ref.read(authNotifierProvider).logout();
+        state = const AsyncValue.data(null);
+      }
+    }
   }
 
   /// Returns a freshly-refreshed Firebase ID token.

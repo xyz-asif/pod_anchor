@@ -25,6 +25,24 @@ class UserSearchResult {
       isFollowing: json['isFollowing'] as bool? ?? false,
     );
   }
+
+  UserSearchResult copyWith({
+    String? id,
+    String? displayName,
+    String? username,
+    String? photoURL,
+    bool? isEditor,
+    bool? isFollowing,
+  }) {
+    return UserSearchResult(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      username: username ?? this.username,
+      photoURL: photoURL ?? this.photoURL,
+      isEditor: isEditor ?? this.isEditor,
+      isFollowing: isFollowing ?? this.isFollowing,
+    );
+  }
 }
 
 class UserSearchPage {

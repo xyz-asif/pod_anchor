@@ -45,22 +45,22 @@ void main() async {
   if (authNotifier.isLoggedIn) {
     log('Restoring session...', name: 'MAIN');
 
-    // 1. Immediately register FCM token for returning users (handles rotation/startup)
-    notificationService.registerTokenWithBackend(
-      container.read(notificationRepoProvider),
-    );
-    log('FCM registration triggered for returning user', name: 'MAIN');
+    // 1. Restore session FIRST — this force-refreshes the Firebase token
+    await container.read(authControllerProvider.notifier).restoreSession();
+    log('Session restored', name: 'MAIN');
 
-    // 2. Restore profile, WS connection, etc.
-    // Don't await — SessionGate handles loading state
-    container.read(authControllerProvider.notifier).restoreSession().then((_) {
-      // Eagerly initialize WS event handler so chat list updates
-      // even before the user opens any individual chat screen
-      container.read(wsEventHandlerProvider);
-      log('Session restored', name: 'MAIN');
-    }).catchError((e) {
-      log('Session restore failed: $e', name: 'MAIN');
-    });
+    // 2. Only register FCM AFTER we have a valid fresh token
+    final authState = container.read(authControllerProvider);
+    if (authState.hasValue && authState.value != null) {
+      notificationService.registerTokenWithBackend(
+        container.read(notificationRepoProvider),
+      );
+      log('FCM registration triggered for returning user', name: 'MAIN');
+    }
+
+    // 3. Start WS event handler
+    container.read(wsEventHandlerProvider);
+    log('WS event handler initialized', name: 'MAIN');
   }
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));

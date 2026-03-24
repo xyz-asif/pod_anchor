@@ -4,9 +4,13 @@ import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/widgets/poem_card.dart';
 import 'package:chatbee/features/poems/repos/poem_repo.dart';
 
+final poemFutureProvider = FutureProvider.family<PoemModel, String>((ref, id) {
+  return ref.read(poemRepoProvider).getPoem(id);
+});
+
 /// Minimal scaffold for deep links and notifications
 /// Shows a single poem in a full-screen card
-class PoemStandaloneScreen extends ConsumerStatefulWidget {
+class PoemStandaloneScreen extends ConsumerWidget {
   final String poemId;
   final PoemModel? poem; // If passed via extra, show immediately
 
@@ -17,46 +21,7 @@ class PoemStandaloneScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PoemStandaloneScreen> createState() => _PoemStandaloneScreenState();
-}
-
-class _PoemStandaloneScreenState extends ConsumerState<PoemStandaloneScreen> {
-  PoemModel? _poem;
-  bool _isLoading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _poem = widget.poem;
-    if (_poem == null) {
-      _fetchPoem();
-    } else {
-      _isLoading = false;
-    }
-  }
-
-  Future<void> _fetchPoem() async {
-    try {
-      final poem = await ref.read(poemRepoProvider).getPoem(widget.poemId);
-      if (mounted) {
-        setState(() {
-          _poem = poem;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Failed to load poem';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -67,38 +32,41 @@ class _PoemStandaloneScreenState extends ConsumerState<PoemStandaloneScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: _buildBody(),
+      body: _buildBody(context, ref),
     );
   }
 
-  Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+  Widget _buildBody(BuildContext context, WidgetRef ref) {
+    if (poem != null) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: PoemCard(poem: poem!),
+      );
     }
 
-    if (_error != null || _poem == null) {
-      return Center(
+    final asyncPoem = ref.watch(poemFutureProvider(poemId));
+
+    return asyncPoem.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _error ?? 'Poem not found',
+              'Failed to load poem',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _fetchPoem,
+              onPressed: () => ref.invalidate(poemFutureProvider(poemId)),
               child: const Text('Retry'),
             ),
           ],
         ),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: PoemCard(
-        poem: _poem!,
+      ),
+      data: (loadedPoem) => SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: PoemCard(poem: loadedPoem),
       ),
     );
   }

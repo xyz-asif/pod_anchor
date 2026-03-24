@@ -89,14 +89,17 @@ class AuthRepo {
     }
   }
 
-  /// Get Firebase ID token
-  Future<String?> getIdToken() async {
-    return _firebaseAuth.currentUser?.getIdToken();
+  /// Get Firebase ID token.
+  /// [forceRefresh] = true fetches a brand new token from Firebase servers.
+  /// Default false returns the cached token (fast, but may be expired).
+  Future<String?> getIdToken({bool forceRefresh = false}) async {
+    return _firebaseAuth.currentUser?.getIdToken(forceRefresh);
   }
 
-  /// Refresh token for API client
+  /// Refresh token for API client.
+  /// Always force-refreshes to guarantee a valid (non-expired) token.
   Future<void> refreshToken() async {
-    final token = await getIdToken();
+    final token = await _firebaseAuth.currentUser?.getIdToken(true);
     if (token != null) {
       await apiClient.setToken(token);
     }

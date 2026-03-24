@@ -8,6 +8,7 @@ import 'package:chatbee/features/poems/controllers/poem_controller.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 import 'package:chatbee/features/poems/repos/poem_repo.dart';
+import 'package:chatbee/features/feed/controllers/feed_controller.dart';
 
 class MyPoemsScreen extends ConsumerStatefulWidget {
   const MyPoemsScreen({super.key});
@@ -67,6 +68,9 @@ class _MyPoemsScreenState extends ConsumerState<MyPoemsScreen> {
     try {
       await ref.read(poemRepoProvider).deletePoem(poem.id);
       ref.read(myPoemsControllerProvider.notifier).removePoem(poem.id);
+      try { ref.read(homeFeedControllerProvider.notifier).removePoem(poem.id); } catch (_) {}
+      try { ref.read(exploreFeedControllerProvider.notifier).removePoem(poem.id); } catch (_) {}
+      try { ref.read(audioFeedControllerProvider.notifier).removePoem(poem.id); } catch (_) {}
       if (mounted) AppSnackbar.show(context, message: 'Poem deleted', type: SnackbarType.success);
     } catch (e) {
       if (mounted) AppSnackbar.show(context, message: 'Failed to delete', type: SnackbarType.error);
