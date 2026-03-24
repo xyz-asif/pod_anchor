@@ -522,7 +522,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     setState(() => _isPublishing = true);
     try {
       _prepareDocumentForSave();
-      await _submit(visibility: 'draft');
+      await _submit(visibility: 'private');
     } finally {
       if (mounted) setState(() => _isPublishing = false);
     }
