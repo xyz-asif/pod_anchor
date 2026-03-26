@@ -20,11 +20,13 @@ import 'package:chatbee/features/profile/models/public_profile_model.dart';
 
 /// Provider for fetching own follow counts - autoDispose ensures it refreshes when needed
 /// but only re-fetches when auth user changes, not on every rebuild.
-final ownFollowCountsProvider = FutureProvider.autoDispose<PublicProfileModel?>((ref) async {
-  final user = ref.watch(authControllerProvider).valueOrNull;
-  if (user == null) return null;
-  return ref.read(followRepoProvider).getPublicProfile(user.id);
-});
+final ownFollowCountsProvider = FutureProvider.autoDispose<PublicProfileModel?>(
+  (ref) async {
+    final user = ref.watch(authControllerProvider).valueOrNull;
+    if (user == null) return null;
+    return ref.read(followRepoProvider).getPublicProfile(user.id);
+  },
+);
 
 /// Redesigned Profile screen — Instagram-style with tabs for poems, reposts, drafts
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -194,10 +196,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         ),
         content: Text(
           'Are you sure you want to sign out?',
-          style: TextStyle(
-            fontSize: 16.sp,
-            color: AppTheme.textMediumColor,
-          ),
+          style: TextStyle(fontSize: 16.sp, color: AppTheme.textMediumColor),
         ),
         actions: [
           TextButton(
@@ -247,7 +246,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final profileState = ref.watch(profileControllerProvider);
     final authUser = ref.watch(authControllerProvider).valueOrNull;
     final user = profileState.valueOrNull ?? authUser;
-    
+
     // Watch follow counts from provider - only re-fetches when auth user changes
     final countsAsync = ref.watch(ownFollowCountsProvider);
     final ownProfile = countsAsync.valueOrNull;
@@ -305,18 +304,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                           IgnorePointer(
                             child: Container(
                               height: 220.h,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.black.withValues(alpha: 0.3),
-                                    Colors.transparent,
-                                    AppTheme.surfaceColor.withValues(alpha: 0.8),
-                                    AppTheme.surfaceColor,
-                                  ],
-                                ),
-                              ),
+                              color: Colors.transparent,
+                              // decoration: BoxDecoration(
+                              //   gradient: LinearGradient(
+                              //     begin: Alignment.topCenter,
+                              //     end: Alignment.bottomCenter,
+                              //     colors: [
+                              //       Colors.transparent,
+                              //       // AppTheme.surfaceColor,
+                              //     ],
+                              //   ),
+                              // ),
                             ),
                           ),
                           // Cover photo upload indicator
@@ -336,15 +334,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                             left: 0,
                             right: 0,
                             child: Row(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.logout_rounded,
-                                      color: Colors.white,
-                                    ),
-                                    onPressed: _showLogoutConfirmation,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.logout_rounded,
+                                    color: Colors.white,
                                   ),
-                                  Expanded(
+                                  onPressed: _showLogoutConfirmation,
+                                ),
+                                Expanded(
                                   child: Center(
                                     child: Text(
                                       '@${user.username ?? 'username'}',
@@ -391,7 +389,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                             ? null
                                             : _pickAndUploadImage,
                                         child: CircleAvatar(
-                                          radius: 46.r,
+                                          radius: 43.r,
                                           backgroundColor: AppTheme.borderColor,
                                           backgroundImage:
                                               user.photoURL != null &&
@@ -428,7 +426,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                             ),
                                           ),
                                         )
-                                      else
+                                      else if (user.photoURL == null ||
+                                          user.photoURL!.isEmpty)
                                         Positioned(
                                           bottom: 0,
                                           right: 0,
@@ -446,7 +445,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                               ),
                                               child: Icon(
                                                 Icons.camera_alt_rounded,
-                                                size: 16.r,
+                                                size: 12.r,
                                                 color: Colors.white,
                                               ),
                                             ),
@@ -463,11 +462,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceAround,
                                       children: [
-                                        _StatItem(
-                                          label: 'Poems',
-                                          value: user.postsCount,
+                                        Expanded(
+                                          child: _StatItem(
+                                            label: 'Poems',
+                                            value: user.postsCount,
+                                          ),
                                         ),
-                                        GestureDetector(
+                                        Expanded(
+                                          child: GestureDetector(
                                           onTap: () {
                                             HapticFeedback.selectionClick();
                                             context.push(
@@ -481,8 +483,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                                 user.followersCount,
                                           ),
                                         ),
-                                        GestureDetector(
-                                          onTap: () {
+                                        ),
+                                        Expanded(
+                                          child: GestureDetector(
+                                            onTap: () {
                                             HapticFeedback.selectionClick();
                                             context.push(
                                               '/profile/${user.id}/following',
@@ -494,6 +498,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                                 ownProfile?.followingCount ??
                                                 user.followingCount,
                                           ),
+                                        ),
                                         ),
                                       ],
                                     ),
@@ -562,13 +567,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                       color: AppTheme.primaryColor,
                                     ),
                                     SizedBox(width: 4.w),
-                                    Text(
-                                      user.externalLink!,
-                                      style: TextStyle(
-                                        fontSize: 14.sp,
-                                        color: AppTheme.primaryColor,
-                                        fontWeight: FontWeight.w600,
-                                        decoration: TextDecoration.underline,
+                                    Expanded(
+                                      child: Text(
+                                        user.externalLink!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 14.sp,
+                                          color: AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w600,
+                                          decoration: TextDecoration.underline,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -794,7 +803,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            poem.title.isNotEmpty ? poem.title : 'Untitled Draft',
+                            poem.title.isNotEmpty
+                                ? poem.title
+                                : 'Untitled Draft',
                             style: TextStyle(
                               fontSize: 16.sp,
                               fontWeight: FontWeight.w700,
@@ -863,21 +874,25 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          '$value',
-          style: TextStyle(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textDarkColor,
+    return Container(
+      color: Colors.transparent,
+      padding: EdgeInsets.symmetric(vertical: 8.h),
+      child: Column(
+        children: [
+          Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDarkColor,
+            ),
           ),
-        ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor),
-        ),
-      ],
+          Text(
+            label,
+            style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor),
+          ),
+        ],
+      ),
     );
   }
 }

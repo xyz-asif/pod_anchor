@@ -69,7 +69,9 @@ class OtherProfileState {
 class OtherProfileController extends _$OtherProfileController {
   @override
   OtherProfileState build(String userId) {
-    _loadProfile(userId);
+    // Defer loading until after build returns initial state to avoid 
+    // "uninitialized provider" error when reading/writing state.
+    Future.microtask(() => _loadProfile(userId));
     return const OtherProfileState();
   }
 

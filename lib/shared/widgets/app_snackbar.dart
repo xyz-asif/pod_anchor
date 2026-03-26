@@ -17,6 +17,8 @@ class AppSnackbar {
     required String message,
     SnackbarType type = SnackbarType.info,
     Duration duration = const Duration(seconds: 3),
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     // Haptic feedback for non-success snackbars
     if (type != SnackbarType.success) {
@@ -37,7 +39,12 @@ class AppSnackbar {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: _SnackbarContent(message: message, type: type),
+          content: _SnackbarContent(
+            message: message,
+            type: type,
+            actionLabel: actionLabel,
+            onAction: onAction,
+          ),
           backgroundColor: Colors.transparent,
           elevation: 0,
           behavior: SnackBarBehavior.floating,
@@ -52,8 +59,15 @@ class AppSnackbar {
 class _SnackbarContent extends StatelessWidget {
   final String message;
   final SnackbarType type;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
-  const _SnackbarContent({required this.message, required this.type});
+  const _SnackbarContent({
+    required this.message,
+    required this.type,
+    this.actionLabel,
+    this.onAction,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +102,30 @@ class _SnackbarContent extends StatelessWidget {
               ),
             ),
           ),
+          if (actionLabel != null && onAction != null) ...[
+            SizedBox(width: 8.w),
+            GestureDetector(
+              onTap: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                onAction!();
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: Text(
+                  actionLabel!,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
           SizedBox(width: 8.w),
           GestureDetector(
             onTap: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),

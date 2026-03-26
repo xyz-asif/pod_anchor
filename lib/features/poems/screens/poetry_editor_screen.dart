@@ -22,8 +22,16 @@ import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 // ── Static hashtag chips ──
 const List<String> kStaticHashtags = [
-  'love', 'grief', 'nature', 'nostalgia', 'hope',
-  'dark', 'spiritual', 'humour', 'life', 'longing',
+  'love',
+  'grief',
+  'nature',
+  'nostalgia',
+  'hope',
+  'dark',
+  'spiritual',
+  'humour',
+  'life',
+  'longing',
 ];
 
 // ── Audio state enum ──
@@ -74,8 +82,6 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   bool _isOriginal = false;
   bool _isPublishing = false;
 
-
-
   // ── Audio state ──
   AudioState _audioState = AudioState.idle;
   String? _recordingPath;
@@ -94,7 +100,6 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   // ── Pulse animation for recording ──
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
-
 
   @override
   void initState() {
@@ -141,8 +146,6 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
     // Initialize original
     _isOriginal = _currentPoem?.isOriginal ?? false;
-
-
 
     // Initialize audio
     if (_currentPoem?.hasAudio == true) {
@@ -226,15 +229,17 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
     if (_currentPoem == null) {
       return _quillController.document.toPlainText().trim().isNotEmpty ||
-             currentTitle.isNotEmpty;
+          currentTitle.isNotEmpty;
     }
 
     // Quick check: if no document edits and title unchanged, skip expensive delta comparison
     if (!_hasEdits && currentTitle == _currentPoem!.title.trim()) return false;
 
-    final currentDelta = jsonEncode(_quillController.document.toDelta().toJson());
+    final currentDelta = jsonEncode(
+      _quillController.document.toDelta().toJson(),
+    );
     return currentDelta != _currentPoem!.contentJson ||
-           currentTitle != _currentPoem!.title.trim();
+        currentTitle != _currentPoem!.title.trim();
   }
 
   Future<bool> _onWillPop() async {
@@ -245,18 +250,33 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Unsaved changes',
-            style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color, fontWeight: FontWeight.w600)),
-        content: Text('You have unsaved changes. What would you like to do?',
-            style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)),
+        title: Text(
+          'Unsaved changes',
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'You have unsaved changes. What would you like to do?',
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'stay'),
-            child: Text('Keep editing', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+            child: Text(
+              'Keep editing',
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'discard'),
-            child: Text('Discard', style: TextStyle(color: Colors.red.shade400)),
+            child: Text(
+              'Discard',
+              style: TextStyle(color: Colors.red.shade400),
+            ),
           ),
         ],
       ),
@@ -284,15 +304,23 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
       if (mounted) {
-        AppSnackbar.show(context, message: 'Microphone permission denied', type: SnackbarType.error);
+        AppSnackbar.show(
+          context,
+          message: 'Microphone permission denied',
+          type: SnackbarType.error,
+        );
       }
       return;
     }
 
     try {
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/poem_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+      final path =
+          '${dir.path}/poem_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
       _pulseController.repeat(reverse: true);
       setState(() {
         _audioState = AudioState.recording;
@@ -305,7 +333,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       });
     } catch (e) {
       if (mounted) {
-        AppSnackbar.show(context, message: 'Unable to start recording', type: SnackbarType.error);
+        AppSnackbar.show(
+          context,
+          message: 'Unable to start recording',
+          type: SnackbarType.error,
+        );
       }
     }
   }
@@ -316,7 +348,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     final path = await _recorder.stop();
     if (path == null || path.isEmpty) {
       if (mounted) {
-        AppSnackbar.show(context, message: 'Recording failed', type: SnackbarType.error);
+        AppSnackbar.show(
+          context,
+          message: 'Recording failed',
+          type: SnackbarType.error,
+        );
       }
       setState(() {
         _audioState = AudioState.idle;
@@ -384,7 +420,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     } catch (e) {
       setState(() => _audioState = AudioState.recorded);
       if (mounted) {
-        AppSnackbar.show(context, message: 'Audio upload failed', type: SnackbarType.error);
+        AppSnackbar.show(
+          context,
+          message: 'Audio upload failed',
+          type: SnackbarType.error,
+        );
       }
     }
   }
@@ -405,7 +445,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     try {
       await _previewPlayer.setAudioSource(source);
       _previewPlayer.play();
-      if (mounted) setState(() { _isPlayingPreview = true; _isLoadingAudio = false; });
+      if (mounted)
+        setState(() {
+          _isPlayingPreview = true;
+          _isLoadingAudio = false;
+        });
     } catch (e) {
       if (mounted) setState(() => _isLoadingAudio = false);
       return;
@@ -427,14 +471,23 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     });
   }
 
-
   // ── Custom tags ──
 
   void _addCustomTag() {
-    final tag = _customTagController.text.trim().toLowerCase().replaceAll('#', '');
-    if (tag.isEmpty || _customTags.contains(tag) || _selectedHashtags.contains(tag)) return;
+    final tag = _customTagController.text.trim().toLowerCase().replaceAll(
+      '#',
+      '',
+    );
+    if (tag.isEmpty ||
+        _customTags.contains(tag) ||
+        _selectedHashtags.contains(tag))
+      return;
     if (_selectedHashtags.length + _customTags.length >= 10) {
-      AppSnackbar.show(context, message: 'Maximum 10 hashtags', type: SnackbarType.error);
+      AppSnackbar.show(
+        context,
+        message: 'Maximum 10 hashtags',
+        type: SnackbarType.error,
+      );
       return;
     }
     setState(() {
@@ -455,12 +508,26 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete poem?', style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color, fontWeight: FontWeight.w600)),
-        content: Text('This cannot be undone.', style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)),
+        title: Text(
+          'Delete poem?',
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'This cannot be undone.',
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Theme.of(context).colorScheme.primary),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -478,36 +545,63 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     try {
       await ref.read(poemRepoProvider).deletePoem(widget.poemId!);
       ref.read(myPoemsControllerProvider.notifier).removePoem(widget.poemId!);
-      try { ref.read(homeFeedControllerProvider.notifier).removePoem(widget.poemId!); } catch (_) {}
-      try { ref.read(exploreFeedControllerProvider.notifier).removePoem(widget.poemId!); } catch (_) {}
-      try { ref.read(audioFeedControllerProvider.notifier).removePoem(widget.poemId!); } catch (_) {}
+      try {
+        ref
+            .read(homeFeedControllerProvider.notifier)
+            .removePoem(widget.poemId!);
+      } catch (_) {}
+      try {
+        ref
+            .read(exploreFeedControllerProvider.notifier)
+            .removePoem(widget.poemId!);
+      } catch (_) {}
+      try {
+        ref
+            .read(audioFeedControllerProvider.notifier)
+            .removePoem(widget.poemId!);
+      } catch (_) {}
       if (mounted) {
-        AppSnackbar.show(context, message: 'Poem deleted', type: SnackbarType.success);
+        AppSnackbar.show(
+          context,
+          message: 'Poem deleted',
+          type: SnackbarType.success,
+        );
         context.pop();
       }
     } catch (e) {
       if (mounted) {
-        AppSnackbar.show(context, message: 'Failed to delete poem', type: SnackbarType.error);
+        AppSnackbar.show(
+          context,
+          message: 'Failed to delete poem',
+          type: SnackbarType.error,
+        );
       }
     }
   }
 
   // ── Publish flow ──
 
-  bool get _isValidToPublish => _wordCount > 0 && _wordCount <= 150 && !_isPublishing;
+  bool get _isValidToPublish =>
+      _wordCount > 0 && _wordCount <= 150 && !_isPublishing;
 
   void _prepareDocumentForSave() {
     final doc = _quillController.document;
     String text = doc.toPlainText();
     int trimCount = 0;
     for (int i = text.length - 1; i >= 0; i--) {
-      if (text[i] == '\n') trimCount++;
-      else break;
+      if (text[i] == '\n')
+        trimCount++;
+      else
+        break;
     }
     if (trimCount > 1) {
       doc.delete(doc.length - trimCount, trimCount - 1);
     }
-    final attr = _textAlign == 'center' ? Attribute.centerAlignment : (_textAlign == 'right' ? Attribute.rightAlignment : Attribute.leftAlignment);
+    final attr = _textAlign == 'center'
+        ? Attribute.centerAlignment
+        : (_textAlign == 'right'
+              ? Attribute.rightAlignment
+              : Attribute.leftAlignment);
     doc.format(0, doc.length, attr);
   }
 
@@ -515,7 +609,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     if (_isPublishing) return;
     final plainText = _quillController.document.toPlainText().trim();
     if (plainText.isEmpty) {
-      AppSnackbar.show(context, message: 'Write something first', type: SnackbarType.error);
+      AppSnackbar.show(
+        context,
+        message: 'Write something first',
+        type: SnackbarType.error,
+      );
       return;
     }
 
@@ -533,12 +631,20 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     final plainText = _quillController.document.toPlainText().trim();
 
     if (plainText.isEmpty) {
-      AppSnackbar.show(context, message: 'Write something first', type: SnackbarType.error);
+      AppSnackbar.show(
+        context,
+        message: 'Write something first',
+        type: SnackbarType.error,
+      );
       return;
     }
 
     if (_wordCount > 150) {
-      AppSnackbar.show(context, message: 'Poem exceeds 150 word limit', type: SnackbarType.error);
+      AppSnackbar.show(
+        context,
+        message: 'Poem exceeds 150 word limit',
+        type: SnackbarType.error,
+      );
       return;
     }
 
@@ -558,7 +664,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       if (_audioState != AudioState.uploaded) return; // upload failed
     }
 
-    final contentJson = jsonEncode(_quillController.document.toDelta().toJson());
+    final contentJson = jsonEncode(
+      _quillController.document.toDelta().toJson(),
+    );
     final plainText = _quillController.document.toPlainText().trim();
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
@@ -581,15 +689,51 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
       PoemModel poem;
       if (widget.poemId != null) {
-        poem = await ref.read(poemRepoProvider).updatePoem(widget.poemId!, request);
+        poem = await ref
+            .read(poemRepoProvider)
+            .updatePoem(widget.poemId!, request);
         ref.read(myPoemsControllerProvider.notifier).updatePoem(poem);
-        try { ref.read(homeFeedControllerProvider.notifier).updatePoemInFeed(poem); } catch (_) {}
-        try { ref.read(exploreFeedControllerProvider.notifier).updatePoemInFeed(poem); } catch (_) {}
+        if (poem.isPublic) {
+          try {
+            ref.read(homeFeedControllerProvider.notifier).updatePoemInFeed(poem);
+          } catch (_) {}
+          try {
+            ref
+                .read(exploreFeedControllerProvider.notifier)
+                .updatePoemInFeed(poem);
+          } catch (_) {}
+          try {
+            ref
+                .read(audioFeedControllerProvider.notifier)
+                .updatePoemInFeed(poem);
+          } catch (_) {}
+        } else {
+          try {
+            ref.read(homeFeedControllerProvider.notifier).removePoem(poem.id);
+          } catch (_) {}
+          try {
+            ref.read(exploreFeedControllerProvider.notifier).removePoem(poem.id);
+          } catch (_) {}
+          try {
+            ref.read(audioFeedControllerProvider.notifier).removePoem(poem.id);
+          } catch (_) {}
+        }
       } else {
         poem = await ref.read(poemRepoProvider).createPoem(request);
         ref.read(myPoemsControllerProvider.notifier).prependPoem(poem);
-        try { ref.read(homeFeedControllerProvider.notifier).prependPoem(poem); } catch (_) {}
-        try { ref.read(exploreFeedControllerProvider.notifier).prependPoem(poem); } catch (_) {}
+        if (poem.isPublic) {
+          try {
+            ref.read(homeFeedControllerProvider.notifier).prependPoem(poem);
+          } catch (_) {}
+          try {
+            ref.read(exploreFeedControllerProvider.notifier).prependPoem(poem);
+          } catch (_) {}
+          if (poem.hasAudio) {
+            try {
+              ref.read(audioFeedControllerProvider.notifier).prependPoem(poem);
+            } catch (_) {}
+          }
+        }
       }
 
       if (mounted) {
@@ -598,7 +742,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       }
     } catch (e) {
       if (mounted) {
-        AppSnackbar.show(context, message: e.toString(), type: SnackbarType.error);
+        AppSnackbar.show(
+          context,
+          message: e.toString(),
+          type: SnackbarType.error,
+        );
       }
     }
   }
@@ -652,7 +800,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     Divider(
                       indent: 20,
                       endIndent: 20,
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.2),
                     ),
 
                     // ── Poem body editor ──
@@ -669,8 +819,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                             fontSize: 12.sp,
                             color: _wordCount > 150
                                 ? Colors.red
-                                : Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-                            fontWeight: _wordCount > 150 ? FontWeight.w600 : FontWeight.w400,
+                                : Theme.of(context).textTheme.bodyMedium?.color
+                                      ?.withValues(alpha: 0.6),
+                            fontWeight: _wordCount > 150
+                                ? FontWeight.w600
+                                : FontWeight.w400,
                           ),
                         ),
                       ),
@@ -679,7 +832,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     Divider(
                       indent: 20,
                       endIndent: 20,
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.2),
                     ),
 
                     // ── Description field ──
@@ -687,7 +842,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                       padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 0),
                       child: MentionTextField(
                         controller: _descriptionController,
-                        hintText: 'Add a description... use @username to mention',
+                        hintText:
+                            'Add a description... use @username to mention',
                         maxLength: 200,
                       ),
                     ),
@@ -696,7 +852,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     Divider(
                       indent: 20,
                       endIndent: 20,
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.2),
                     ),
 
                     // ── Original content checkbox ──
@@ -706,24 +864,35 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                         children: [
                           Checkbox(
                             value: _isOriginal,
-                            onChanged: (v) => setState(() => _isOriginal = v ?? false),
+                            onChanged: (v) =>
+                                setState(() => _isOriginal = v ?? false),
                             activeColor: AppTheme.primaryColor,
                           ),
                           SizedBox(width: 4.w),
                           Expanded(
                             child: GestureDetector(
-                              onTap: () => setState(() => _isOriginal = !_isOriginal),
+                              onTap: () =>
+                                  setState(() => _isOriginal = !_isOriginal),
                               child: RichText(
-                                text: TextSpan(children: [
-                                  TextSpan(
-                                    text: '© ',
-                                    style: TextStyle(fontSize: 15.sp, color: AppTheme.primaryColor, fontWeight: FontWeight.w700),
-                                  ),
-                                  TextSpan(
-                                    text: 'This is my original work',
-                                    style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor),
-                                  ),
-                                ]),
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: '© ',
+                                      style: TextStyle(
+                                        fontSize: 15.sp,
+                                        color: AppTheme.primaryColor,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: 'This is my original work',
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        color: AppTheme.textDarkColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -734,7 +903,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     Divider(
                       indent: 20,
                       endIndent: 20,
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.2),
                     ),
 
                     // ── Genres / Hashtags ──
@@ -743,7 +914,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     Divider(
                       indent: 20,
                       endIndent: 20,
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.2),
                     ),
 
                     // ── Audio section ──
@@ -752,11 +925,13 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     Divider(
                       indent: 20,
                       endIndent: 20,
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.2),
                     ),
 
                     SizedBox(height: 24.h),
-                    
+
                     // ── Publish Button ──
                     _buildPublishButton(),
 
@@ -770,7 +945,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 150),
                   curve: Curves.easeOut,
-                  top: _toolbarTop ?? (MediaQuery.of(context).padding.top + kToolbarHeight + 16),
+                  top:
+                      _toolbarTop ??
+                      (MediaQuery.of(context).padding.top +
+                          kToolbarHeight +
+                          16),
                   left: 16,
                   right: 16,
                   child: Center(
@@ -860,22 +1039,36 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
         // Undo
         IconButton(
-          icon: Icon(Icons.undo, color: _quillController.hasUndo ? null : Theme.of(context).iconTheme.color?.withValues(alpha: 0.3)),
+          icon: Icon(
+            Icons.undo,
+            color: _quillController.hasUndo
+                ? null
+                : Theme.of(context).iconTheme.color?.withValues(alpha: 0.3),
+          ),
           tooltip: 'Undo',
-          onPressed: _quillController.hasUndo ? () {
-            HapticFeedback.lightImpact();
-            _quillController.undo();
-          } : null,
+          onPressed: _quillController.hasUndo
+              ? () {
+                  HapticFeedback.lightImpact();
+                  _quillController.undo();
+                }
+              : null,
         ),
 
         // Redo
         IconButton(
-          icon: Icon(Icons.redo, color: _quillController.hasRedo ? null : Theme.of(context).iconTheme.color?.withValues(alpha: 0.3)),
+          icon: Icon(
+            Icons.redo,
+            color: _quillController.hasRedo
+                ? null
+                : Theme.of(context).iconTheme.color?.withValues(alpha: 0.3),
+          ),
           tooltip: 'Redo',
-          onPressed: _quillController.hasRedo ? () {
-            HapticFeedback.lightImpact();
-            _quillController.redo();
-          } : null,
+          onPressed: _quillController.hasRedo
+              ? () {
+                  HapticFeedback.lightImpact();
+                  _quillController.redo();
+                }
+              : null,
         ),
 
         // Draft button (only for new or draft poems)
@@ -886,7 +1079,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
               onPressed: _isPublishing ? null : _onDraft,
               style: TextButton.styleFrom(
                 foregroundColor: AppTheme.textMediumColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
               ),
               child: Text(
                 'Draft',
@@ -908,13 +1103,22 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
           onPressed: _isValidToPublish ? _onPublish : null,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
-            disabledBackgroundColor: AppTheme.primaryColor.withValues(alpha: 0.3),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+            disabledBackgroundColor: AppTheme.primaryColor.withValues(
+              alpha: 0.3,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.r),
+            ),
             elevation: 0,
           ),
           child: Text(
             widget.poemId != null ? 'Update Poem' : 'Publish Poem',
-            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: 0.5),
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
       ),
@@ -927,13 +1131,19 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       onTap: () {
         HapticFeedback.lightImpact();
         setState(() => _textAlign = align);
-        final attr = align == 'center' ? Attribute.centerAlignment : (align == 'right' ? Attribute.rightAlignment : Attribute.leftAlignment);
+        final attr = align == 'center'
+            ? Attribute.centerAlignment
+            : (align == 'right'
+                  ? Attribute.rightAlignment
+                  : Attribute.leftAlignment);
         _quillController.formatText(0, _quillController.document.length, attr);
       },
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.primaryColor.withValues(alpha: 0.2) : Colors.transparent,
+          color: isActive
+              ? AppTheme.primaryColor.withValues(alpha: 0.2)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(6.r),
         ),
         child: Icon(
@@ -947,7 +1157,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   Widget _buildTitleField(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? const Color(0xFFF5F0EB) : const Color(0xFF1A1A2E);
+    final textColor = isDark
+        ? const Color(0xFFF5F0EB)
+        : const Color(0xFF1A1A2E);
 
     return Container(
       padding: EdgeInsets.fromLTRB(24.w, 24.h, 24.w, 16.h),
@@ -1017,7 +1229,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                   fontFamily: 'JosefinSans',
                   fontSize: 18.sp,
                   height: 1.2,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.4),
                   fontStyle: FontStyle.italic,
                 ),
                 const HorizontalSpacing(0, 0),
@@ -1069,11 +1283,15 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                 checkmarkColor: AppTheme.primaryColor,
                 labelStyle: TextStyle(
                   fontSize: 13.sp,
-                  color: selected ? AppTheme.primaryColor : AppTheme.textMediumColor,
+                  color: selected
+                      ? AppTheme.primaryColor
+                      : AppTheme.textMediumColor,
                 ),
                 backgroundColor: AppTheme.featureBackgroundColor,
                 side: BorderSide(
-                  color: selected ? AppTheme.primaryColor : AppTheme.borderColor,
+                  color: selected
+                      ? AppTheme.primaryColor
+                      : AppTheme.borderColor,
                 ),
               );
             }).toList(),
@@ -1091,8 +1309,13 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                   deleteIcon: Icon(Icons.close, size: 16.r),
                   onDeleted: () => setState(() => _customTags.remove(tag)),
                   backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  labelStyle: TextStyle(fontSize: 13.sp, color: AppTheme.primaryColor),
-                  side: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
+                  labelStyle: TextStyle(
+                    fontSize: 13.sp,
+                    color: AppTheme.primaryColor,
+                  ),
+                  side: BorderSide(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                  ),
                 );
               }).toList(),
             ),
@@ -1107,13 +1330,25 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                 child: TextField(
                   controller: _customTagController,
                   onSubmitted: (_) => _addCustomTag(),
-                  style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor),
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppTheme.textDarkColor,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Add your own tag...',
-                    hintStyle: TextStyle(fontSize: 14.sp, color: AppTheme.textLightColor),
+                    hintStyle: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppTheme.textLightColor,
+                    ),
                     prefixText: '# ',
-                    prefixStyle: TextStyle(fontSize: 14.sp, color: AppTheme.textMediumColor),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                    prefixStyle: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppTheme.textMediumColor,
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12.w,
+                      vertical: 10.h,
+                    ),
                     filled: true,
                     fillColor: AppTheme.featureBackgroundColor,
                     border: OutlineInputBorder(
@@ -1126,7 +1361,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.r),
-                      borderSide: const BorderSide(color: AppTheme.primaryColor),
+                      borderSide: const BorderSide(
+                        color: AppTheme.primaryColor,
+                      ),
                     ),
                   ),
                 ),
@@ -1180,12 +1417,24 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _startRecording,
-                icon: Icon(Icons.mic_rounded, size: 18.r, color: AppTheme.primaryColor),
-                label: Text('Record', style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor)),
+                icon: Icon(
+                  Icons.mic_rounded,
+                  size: 18.r,
+                  color: AppTheme.primaryColor,
+                ),
+                label: Text(
+                  'Record',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppTheme.textDarkColor,
+                  ),
+                ),
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: 12.h),
                   side: BorderSide(color: AppTheme.borderColor),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
                 ),
               ),
             ),
@@ -1193,12 +1442,24 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _pickAudioFile,
-                icon: Icon(Icons.upload_file_rounded, size: 18.r, color: AppTheme.primaryColor),
-                label: Text('Upload', style: TextStyle(fontSize: 14.sp, color: AppTheme.textDarkColor)),
+                icon: Icon(
+                  Icons.upload_file_rounded,
+                  size: 18.r,
+                  color: AppTheme.primaryColor,
+                ),
+                label: Text(
+                  'Upload',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppTheme.textDarkColor,
+                  ),
+                ),
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: 12.h),
                   side: BorderSide(color: AppTheme.borderColor),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
                 ),
               ),
             ),
@@ -1228,7 +1489,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                   SizedBox(width: 8.w),
                   Text(
                     '${_recordingSeconds ~/ 60}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}',
-                    style: TextStyle(fontSize: 24.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor),
+                    style: TextStyle(
+                      fontSize: 24.sp,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDarkColor,
+                    ),
                   ),
                 ],
               ),
@@ -1242,9 +1507,13 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                     tooltip: 'Cancel',
                   ),
                   IconButton(
-                    onPressed: _isRecordingPaused ? _resumeRecording : _pauseRecording,
+                    onPressed: _isRecordingPaused
+                        ? _resumeRecording
+                        : _pauseRecording,
                     icon: Icon(
-                      _isRecordingPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                      _isRecordingPaused
+                          ? Icons.play_arrow_rounded
+                          : Icons.pause_rounded,
                       color: AppTheme.primaryColor,
                       size: 32.r,
                     ),
@@ -1252,7 +1521,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                   ),
                   IconButton(
                     onPressed: _stopRecording,
-                    icon: Icon(Icons.stop_rounded, color: AppTheme.primaryColor, size: 32.r),
+                    icon: Icon(
+                      Icons.stop_rounded,
+                      color: AppTheme.primaryColor,
+                      size: 32.r,
+                    ),
                     tooltip: 'Stop',
                   ),
                 ],
@@ -1269,14 +1542,19 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
           decoration: BoxDecoration(
             color: AppTheme.featureBackgroundColor,
             borderRadius: BorderRadius.circular(12.r),
-            border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: AppTheme.primaryColor.withValues(alpha: 0.3),
+            ),
           ),
           child: Row(
             children: [
               GestureDetector(
-                onTap: _audioState == AudioState.uploading ? null : _togglePreviewPlayback,
+                onTap: _audioState == AudioState.uploading
+                    ? null
+                    : _togglePreviewPlayback,
                 child: Container(
-                  width: 40.r, height: 40.r,
+                  width: 40.r,
+                  height: 40.r,
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
@@ -1284,10 +1562,15 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                   child: _isLoadingAudio
                       ? Padding(
                           padding: EdgeInsets.all(10.r),
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.primaryColor,
+                          ),
                         )
                       : Icon(
-                          _isPlayingPreview ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          _isPlayingPreview
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
                           size: 24.r,
                           color: AppTheme.primaryColor,
                         ),
@@ -1302,27 +1585,42 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                       _audioState == AudioState.uploading
                           ? 'Uploading...'
                           : _audioState == AudioState.uploaded
-                              ? 'Audio ready'
-                              : 'Recorded',
-                      style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor),
+                          ? 'Audio ready'
+                          : 'Recorded',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDarkColor,
+                      ),
                     ),
                     if (_audioDuration > 0)
                       Text(
                         '${_audioDuration ~/ 60}:${(_audioDuration % 60).toString().padLeft(2, '0')}',
-                        style: TextStyle(fontSize: 12.sp, color: AppTheme.textLightColor),
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: AppTheme.textLightColor,
+                        ),
                       ),
                   ],
                 ),
               ),
               if (_audioState == AudioState.uploading)
                 SizedBox(
-                  width: 20.r, height: 20.r,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
+                  width: 20.r,
+                  height: 20.r,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.primaryColor,
+                  ),
                 )
               else
                 IconButton(
                   onPressed: _removeAudio,
-                  icon: Icon(Icons.delete_outline, color: Colors.red, size: 20.r),
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 20.r,
+                  ),
                   tooltip: 'Remove audio',
                 ),
             ],
@@ -1330,6 +1628,4 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
         );
     }
   }
-
-
 }

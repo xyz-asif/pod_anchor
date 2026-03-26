@@ -18,6 +18,7 @@ import 'package:chatbee/features/feed/controllers/feed_controller.dart';
 import 'package:chatbee/features/social/controllers/social_action_controller.dart';
 import 'package:chatbee/features/social/widgets/comment_bottom_sheet.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
+import 'package:chatbee/features/poems/widgets/poem_share_sheet.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 class PoemCard extends ConsumerStatefulWidget {
@@ -870,13 +871,15 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                   ),
                 ),
 
-              // Share icon (dummy)
+              // Share icon
               GestureDetector(
                 onTap: () {
-                  AppSnackbar.show(
-                    context,
-                    message: 'Sharing coming soon',
-                    type: SnackbarType.info,
+                  HapticFeedback.selectionClick();
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => PoemShareSheet(poem: widget.poem),
                   );
                 },
                 child: Icon(

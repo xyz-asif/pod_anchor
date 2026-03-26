@@ -29,6 +29,7 @@ class ProfileController extends _$ProfileController {
     String? photoURL,
     String? bio,
     String? coverImageURL,
+    String? externalLink,
   }) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
@@ -37,6 +38,7 @@ class ProfileController extends _$ProfileController {
         photoURL: photoURL,
         bio: bio,
         coverImageURL: coverImageURL,
+        externalLink: externalLink,
       );
       // Sync to auth controller so ALL screens see the update
       ref.read(authControllerProvider.notifier).updateUser(updated);

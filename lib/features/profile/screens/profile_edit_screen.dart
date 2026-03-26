@@ -9,7 +9,6 @@ import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/core/services/cloudinary_service.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/profile/controllers/profile_controller.dart';
-import 'package:chatbee/features/profile/repos/user_repo.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
 
 class ProfileEditScreen extends ConsumerStatefulWidget {
@@ -88,16 +87,13 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         coverURL = result.secureUrl;
       }
 
-      final updatedUser = await ref.read(userRepoProvider).updateMyProfile(
+      await ref.read(profileControllerProvider.notifier).updateProfile(
             displayName: name,
             bio: _bioController.text.trim(),
             externalLink: _linkController.text.trim(),
             photoURL: photoURL.isNotEmpty ? photoURL : null,
             coverImageURL: coverURL.isNotEmpty ? coverURL : null,
           );
-
-      ref.read(authControllerProvider.notifier).updateUser(updatedUser);
-      ref.invalidate(profileControllerProvider);
 
       if (mounted) {
         AppSnackbar.show(context,

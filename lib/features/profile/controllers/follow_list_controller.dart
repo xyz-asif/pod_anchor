@@ -66,7 +66,9 @@ class FollowListArgs {
 class FollowListController extends _$FollowListController {
   @override
   FollowListState build(FollowListArgs args) {
-    _loadInitial();
+    // Defer loading until after build returns initial state to avoid 
+    // "uninitialized provider" error when reading/writing state.
+    Future.microtask(() => _loadInitial());
     return const FollowListState();
   }
 
