@@ -28,7 +28,8 @@ enum WsEventType {
   profileUpdated,
   presenceSync,
   connectionAccepted,
-  notification;
+  notification,
+  roomDeleted;
 
   static WsEventType? fromString(String? value) {
     switch (value) {
@@ -47,6 +48,7 @@ enum WsEventType {
       case 'presence_sync':       return WsEventType.presenceSync;
       case 'connection_accepted': return WsEventType.connectionAccepted;
       case 'notification':        return WsEventType.notification;
+      case 'room_deleted':        return WsEventType.roomDeleted;
       default:                    return null;
     }
   }
@@ -68,6 +70,7 @@ enum WsEventType {
       case WsEventType.presenceSync:         return 'presence_sync';
       case WsEventType.connectionAccepted:   return 'connection_accepted';
       case WsEventType.notification:         return 'notification';
+      case WsEventType.roomDeleted:          return 'room_deleted';
     }
   }
 }
@@ -87,6 +90,19 @@ class WsEvent {
   factory WsEvent.fromJson(Map<String, dynamic> json) {
     return WsEvent(
       type: WsEventType.fromString(json['type']) ?? WsEventType.message,
+      roomId: json['roomId'] ?? '',
+      payload: json['payload'] != null
+          ? Map<String, dynamic>.from(json['payload'])
+          : {},
+    );
+  }
+
+  /// Returns null for unknown event types instead of crashing.
+  static WsEvent? tryFromJson(Map<String, dynamic> json) {
+    final type = WsEventType.fromString(json['type']);
+    if (type == null) return null;
+    return WsEvent(
+      type: type,
       roomId: json['roomId'] ?? '',
       payload: json['payload'] != null
           ? Map<String, dynamic>.from(json['payload'])
@@ -118,7 +134,7 @@ class WebSocketService {
   Timer? _pongTimeoutTimer;
   StreamSubscription? _connectivitySubscription;
 
-  static const int _pongTimeoutSeconds    = 10;
+  static const int _pongTimeoutSeconds    = 20;
   static const int _pingIntervalSeconds   = 10; // < backend 15s read timeout
   static const int _maxReconnectAttempts  = 10;
 
@@ -231,8 +247,11 @@ class WebSocketService {
   }
 
   /// HTTP disconnect + close. Called when app goes to background.
+  /// Guarded against double-fire: lifecycle can send both `paused` and
+  /// `hidden` in quick succession — only the first call does real work.
   Future<void> disconnectAndNotifyServer() async {
     if (_token == null) { disconnect(); return; }
+    if (_intentionalDisconnect) return; // already disconnecting/disconnected
     _intentionalDisconnect = true;
 
     try {
@@ -248,7 +267,13 @@ class WebSocketService {
     } catch (e) {
       log('[WS] Disconnect API error: $e', name: 'WS');
     } finally {
-      _closeChannel(keepToken: true);
+      // Only close if we're still intentionally disconnecting.
+      // If the user resumed the app before this finally block ran
+      // (within the 3s HTTP timeout window), _intentionalDisconnect
+      // will be false — closing here would kill the fresh reconnection.
+      if (_intentionalDisconnect) {
+        _closeChannel(keepToken: true);
+      }
     }
   }
 
@@ -286,6 +311,13 @@ class WebSocketService {
         _startPresenceSyncTimer();
         _startPingTimer();
         log('[WS] Connected ✓', name: 'WS');
+
+        // Sync presence on EVERY successful connection — not just app resume.
+        // This ensures the backend knows we're online even after a silent
+        // reconnect via backoff or network-change listener.
+        sendPresenceStatus(true);
+        requestPresenceSync();
+
         if (_connectCompleter != null && !_connectCompleter!.isCompleted) {
           _connectCompleter!.complete(true);
         }
@@ -324,6 +356,15 @@ class WebSocketService {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
       final type = json['type'] as String?;
 
+      // Server sent a ping — reply with pong so server knows we're alive.
+      if (type == 'ping') {
+        try {
+          _channel?.sink.add(jsonEncode({'type': 'pong'}));
+        } catch (_) {}
+        _cancelPongTimeout(); // server data = connection alive
+        return;
+      }
+
       // Pong (or any data) proves connection is alive — cancel pong timer.
       if (type == 'pong' || type == 'connected') {
         _cancelPongTimeout();
@@ -343,7 +384,11 @@ class WebSocketService {
         return;
       }
 
-      final event = WsEvent.fromJson(json);
+      final event = WsEvent.tryFromJson(json);
+      if (event == null) {
+        log('[WS] Unknown event type: $type — ignored', name: 'WS');
+        return;
+      }
       _eventController.add(event);
       log('[WS] ← ${event.type.value} (room: ${event.roomId})', name: 'WS');
     } catch (e) {
@@ -448,10 +493,9 @@ class WebSocketService {
   /// Exponential backoff: 3 * 2^attempt seconds ± 20% jitter, clamped 3–30 s.
   void _scheduleReconnect() {
     if (_intentionalDisconnect) return;
-    if (_reconnectAttempts >= _maxReconnectAttempts) {
-      log('[WS] Max reconnect attempts reached', name: 'WS');
-      return;
-    }
+    // Never permanently give up — users who lose network for extended
+    // periods (tunnel, elevator, airplane mode) should auto-reconnect
+    // when signal returns. The delay is already capped at 30s below.
 
     _reconnectTimer?.cancel();
     final base   = 3 * math.pow(2, _reconnectAttempts).toInt();

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -71,6 +72,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     // Mark room as read explicitly when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      log('[CHAT_SCREEN_DEBUG] Screen Opend for room: ${widget.roomId}. Setting currentOpenRoomProvider = ${widget.roomId}', name: 'UI_STATE');
       ref.read(currentOpenRoomProvider.notifier).state = widget.roomId;
       ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
       ref.read(chatListControllerProvider.notifier).clearUnreadCount(widget.roomId);
@@ -97,13 +99,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     
-    // Clear currentOpenRoom after frame completes (navigation has happened)
-    // This avoids the "ref invalid after dispose" error
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
+    // Clear currentOpenRoom only if this screen still owns it.
+    // Without the guard, navigating A→B and quickly back causes B's dispose
+    // to null the value that A's initState just set, breaking unread suppression.
+    log('[CHAT_SCREEN_DEBUG] Screen Disposed for room: ${widget.roomId}. Clearing currentOpenRoomProvider', name: 'UI_STATE');
+    try {
+      if (ref.read(currentOpenRoomProvider) == widget.roomId) {
         ref.read(currentOpenRoomProvider.notifier).state = null;
-      } catch (_) {}
-    });
+      }
+    } catch (_) {
+      log('[CHAT_SCREEN_DEBUG] ref already disposed — currentOpenRoom clear skipped', name: 'UI_STATE');
+    }
 
     // Cancel recording - wrap in try-catch since ref may be disposed
     try {
@@ -176,6 +182,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     if (text.isNotEmpty && !_isTyping) {
       _isTyping = true;
       ref.read(typingControllerProvider(widget.roomId).notifier).startTyping();
+    } else if (text.isEmpty && _isTyping) {
+      _typingDebounce?.cancel();
+      _isTyping = false;
+      ref.read(typingControllerProvider(widget.roomId).notifier).stopTyping();
+      return;
     }
 
     _typingDebounce?.cancel();
@@ -441,7 +452,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final messagesState = ref.watch(messageControllerProvider(widget.roomId));
     final typingState = ref.watch(typingControllerProvider(widget.roomId));
     // Get current user info
-    final currentUser = ref.read(authControllerProvider).valueOrNull;
+    final currentUser = ref.watch(authControllerProvider).valueOrNull;
     final currentUserId = currentUser?.id ?? '';
 
     // Error snackbar & active reading & auto-scroll
@@ -460,14 +471,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           if (prevList.isNotEmpty &&
               messages.length > prevList.length &&
               messages.isNotEmpty) {
-            final lastMsg =
-                messages.last; // state is chronological, last is newest
-            // If the newest incoming message is from someone else and unread, mark it read
-            if (lastMsg.senderId != currentUserId && lastMsg.status != 'read') {
-              ref
-                  .read(messageControllerProvider(widget.roomId).notifier)
-                  .markAsRead();
-            }
+            final lastMsg = messages.last; // state is chronological, last is newest
+            // Note: We no longer call messageController.markAsRead() here because
+            // ws_event_handler already sends a 'room_read' socket event instantly
+            // if currentOpenRoomProvider matches the incoming message's room.
+            // Calling the API here causes race conditions when closing the screen.
 
             // Auto-scroll to bottom if user is near the end
             if (_scrollController.hasClients &&
@@ -1519,6 +1527,14 @@ class _StatusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     switch (status) {
+      case 'failed':
+        return Icon(Icons.error_outline_rounded, size: 16.r, color: Colors.redAccent);
+      case 'uploading':
+        return SizedBox(
+          width: 12.r,
+          height: 12.r,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+        );
       case 'read':
         return Icon(
           Icons.done_all_rounded,

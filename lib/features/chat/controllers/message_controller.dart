@@ -1,3 +1,5 @@
+import 'dart:developer';
+import 'package:collection/collection.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/chat/models/message_response.dart';
 import 'package:chatbee/features/chat/models/media_metadata.dart';
@@ -80,8 +82,11 @@ class MessageController extends _$MessageController {
       _hasMore = result.$2;
       final older = result.$1;
 
-      // Prepend the newly fetched older messages
-      state = AsyncValue.data([...older, ...current]);
+      // Prepend, deduplicating in case a WS message arrived between the fetch
+      // and now (identical ID would appear in both `older` and `current`).
+      final existingIds = current.map((m) => m.id).toSet();
+      final uniqueOlder = older.where((m) => !existingIds.contains(m.id)).toList();
+      state = AsyncValue.data([...uniqueOlder, ...current]);
     } finally {
       _isLoadingOlder = false;
     }
@@ -100,7 +105,7 @@ class MessageController extends _$MessageController {
 
     // Optimistic: add a temporary message
     final optimistic = MessageResponse(
-      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'temp_${DateTime.now().microsecondsSinceEpoch}',
       roomId: roomId,
       senderId: currentUserId,
       content: content,
@@ -122,11 +127,19 @@ class MessageController extends _$MessageController {
             metadata: metadata,
           );
 
-      // Replace optimistic with real message
+      // Replace optimistic with real message, preserving status if it
+      // already advanced (e.g. a fast room_read WS event marked it 'read'
+      // before the REST response arrived with 'delivered').
       final updated = state.valueOrNull ?? [];
-      final swapped = updated
-          .map((m) => m.id == optimistic.id ? sent : m)
-          .toList();
+      final swapped = updated.map((m) {
+        if (m.id == optimistic.id) {
+          final preserved = _higherStatus(m.status, sent.status);
+          return preserved != sent.status
+              ? sent.copyWith(status: preserved)
+              : sent;
+        }
+        return m;
+      }).toList();
 
       // Deduplicate: a WS echo may have arrived before the REST response
       final seen = <String>{};
@@ -139,13 +152,33 @@ class MessageController extends _$MessageController {
       ref
           .read(chatListControllerProvider.notifier)
           .updateLastMessage(roomId, lastMessage: preview);
-    } catch (e) {
-      // Remove optimistic on failure
+    } catch (e, st) {
+      log('[MESSAGE_CONTROLLER_DEBUG] Error sending message: $e', name: 'UI_STATE');
+      if (e is FormatException) {
+         log('[MESSAGE_CONTROLLER_DEBUG] FormatException details: ${e.message}', name: 'UI_STATE');
+      } else {
+        // Since we can't easily import DioException here without adding dio to file,
+        // we use a loose check on toString to grab response data if it's a Dio error
+        if (e.toString().contains('DioException')) {
+          try {
+            final dynamic dioErr = e;
+            log('[MESSAGE_CONTROLLER_DEBUG] DioException Response: ${dioErr.response?.data}', name: 'UI_STATE');
+            log('[MESSAGE_CONTROLLER_DEBUG] DioException StatusCode: ${dioErr.response?.statusCode}', name: 'UI_STATE');
+          } catch (_) {}
+        }
+      }
+      log('[MESSAGE_CONTROLLER_DEBUG] Stacktrace: $st', name: 'UI_STATE');
+
+      // Mark optimistic message as 'failed' instead of removing it.
+      // This way the user sees it didn't send instead of it mysteriously vanishing.
       final updated = state.valueOrNull ?? [];
       state = AsyncValue.data(
-        updated.where((m) => m.id != optimistic.id).toList(),
+        updated.map((m) => m.id == optimistic.id
+            ? m.copyWith(status: 'failed')
+            : m).toList(),
       );
-      rethrow;
+      // Don't rethrow — the error is logged and the UI shows the failed message.
+      // Rethrowing would cause a snackbar AND the message stays, which is redundant.
     }
   }
 
@@ -188,7 +221,7 @@ class MessageController extends _$MessageController {
 
     // Step 1: Optimistic placeholder (local path as content for preview)
     final optimistic = MessageResponse(
-      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'temp_${DateTime.now().microsecondsSinceEpoch}',
       roomId: roomId,
       senderId: currentUserId,
       type: messageType.name,
@@ -238,11 +271,17 @@ class MessageController extends _$MessageController {
             replyToId: replyToId,
           );
 
-      // Step 5: Replace optimistic
+      // Step 5: Replace optimistic, preserving advanced status
       final updated = state.valueOrNull ?? [];
-      final swapped = updated
-          .map((m) => m.id == optimistic.id ? sent : m)
-          .toList();
+      final swapped = updated.map((m) {
+        if (m.id == optimistic.id) {
+          final preserved = _higherStatus(m.status, sent.status);
+          return preserved != sent.status
+              ? sent.copyWith(status: preserved)
+              : sent;
+        }
+        return m;
+      }).toList();
       final seen = <String>{};
       state = AsyncValue.data(swapped.where((m) => seen.add(m.id)).toList());
 
@@ -251,13 +290,18 @@ class MessageController extends _$MessageController {
       ref
           .read(chatListControllerProvider.notifier)
           .updateLastMessage(roomId, lastMessage: preview);
-    } catch (e) {
-      // Remove optimistic on failure
+    } catch (e, st) {
+      log('[MESSAGE_CONTROLLER_DEBUG] Error sending media: $e', name: 'UI_STATE');
+      log('[MESSAGE_CONTROLLER_DEBUG] Stacktrace: $st', name: 'UI_STATE');
+
+      // Mark optimistic message as 'failed' so user sees it didn't send,
+      // consistent with sendMessage() behavior.
       final updated = state.valueOrNull ?? [];
       state = AsyncValue.data(
-        updated.where((m) => m.id != optimistic.id).toList(),
+        updated.map((m) => m.id == optimistic.id
+            ? m.copyWith(status: 'failed')
+            : m).toList(),
       );
-      rethrow;
     }
   }
 
@@ -270,16 +314,28 @@ class MessageController extends _$MessageController {
   }
 
   /// Update a message's status (for tick progression).
+  /// Guards against downgrades: sent → delivered → read only.
   void updateMessageStatus(String messageId, String status) {
     final current = state.valueOrNull;
     if (current == null) return;
 
     state = AsyncValue.data(
       current.map((m) {
-        if (m.id == messageId) return m.copyWith(status: status);
+        if (m.id == messageId) {
+          // Only advance, never downgrade
+          final higher = _higherStatus(m.status, status);
+          if (higher == m.status) return m; // already at or above
+          return m.copyWith(status: status);
+        }
         return m;
       }).toList(),
     );
+  }
+
+  /// Returns whichever status is higher in the sent → delivered → read chain.
+  static String _higherStatus(String a, String b) {
+    const rank = {'uploading': -1, 'failed': -1, 'sent': 0, 'delivered': 1, 'read': 2};
+    return (rank[a] ?? 0) >= (rank[b] ?? 0) ? a : b;
   }
 
   /// Mark all sent messages as "read" (batch room_read event).
@@ -289,8 +345,11 @@ class MessageController extends _$MessageController {
 
     state = AsyncValue.data(
       current.map((m) {
-        // Only update messages NOT sent by the reader
-        if (m.senderId != readByUserId && m.status != 'read') {
+        // Only update messages NOT sent by the reader, and skip local-only states
+        if (m.senderId != readByUserId &&
+            m.status != 'read' &&
+            m.status != 'failed' &&
+            m.status != 'uploading') {
           return m.copyWith(status: 'read');
         }
         return m;
@@ -357,9 +416,8 @@ class MessageController extends _$MessageController {
     final current = state.valueOrNull;
     if (current == null) return;
 
-    final oldMsgList = current.where((m) => m.id == messageId).toList();
-    if (oldMsgList.isEmpty) return;
-    final oldMsg = oldMsgList.first;
+    final oldMsg = current.firstWhereOrNull((m) => m.id == messageId);
+    if (oldMsg == null) return;
 
     // Optimistically update locally
     editMessage(messageId, newContent);
@@ -383,9 +441,8 @@ class MessageController extends _$MessageController {
     final current = state.valueOrNull;
     if (current == null) return;
 
-    final oldMsgList = current.where((m) => m.id == messageId).toList();
-    if (oldMsgList.isEmpty) return;
-    final oldMsg = oldMsgList.first;
+    final oldMsg = current.firstWhereOrNull((m) => m.id == messageId);
+    if (oldMsg == null) return;
 
     // Optimistically update locally
     deleteMessage(messageId);
@@ -411,9 +468,8 @@ class MessageController extends _$MessageController {
         ref.read(authControllerProvider).valueOrNull?.id ?? '';
     if (currentUserId.isEmpty) return;
 
-    final oldMsgList = current.where((m) => m.id == messageId).toList();
-    if (oldMsgList.isEmpty) return;
-    final oldMsg = oldMsgList.first;
+    final oldMsg = current.firstWhereOrNull((m) => m.id == messageId);
+    if (oldMsg == null) return;
 
     // Check existing reaction to see if we are removing it
     final exists = oldMsg.reactions[currentUserId] == emoji;

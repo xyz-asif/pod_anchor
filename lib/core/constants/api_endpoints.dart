@@ -7,7 +7,8 @@ class ApiEndpoints {
   // Change this line in your ApiEndpoints class:
 
   // static const String baseUrl = 'http://asifs-macbook-air.local:8080/api/v1';
-  static const String baseUrl = 'https://glacial-filiberto-cespitosely.ngrok-free.dev/api/v1';
+  static const String baseUrl =
+      'https://glacial-filiberto-cespitosely.ngrok-free.dev/api/v1';
 
   // ── Users ──
   static const String usersMe = '/users/me';

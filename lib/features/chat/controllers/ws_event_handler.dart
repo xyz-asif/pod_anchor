@@ -73,6 +73,9 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
       case WsEventType.notification:
         _handleNotification(ref, event);
         break;
+      case WsEventType.roomDeleted:
+        _handleRoomDeleted(ref, event);
+        break;
     }
   });
 
@@ -87,34 +90,38 @@ Stream<WsEvent> wsEventHandler(Ref ref) {
 void _handleNewMessage(Ref ref, WsEvent event) {
   // Guard: ignore messages with no roomId — they cannot be routed correctly
   if (event.roomId.isEmpty) {
-    log(
-      '[WS] _handleNewMessage: ignoring message with empty roomId',
-      name: 'WS',
-    );
+    log('[WS_DEBUG] _handleNewMessage: ignoring message with empty roomId', name: 'WS');
     return;
   }
 
-  print('[WS] _handleNewMessage called for room ${event.roomId}');
+  log('[WS_DEBUG] --------------------------------------------------', name: 'WS');
+  log('[WS_DEBUG] _handleNewMessage START for room: ${event.roomId}', name: 'WS');
+
   try {
     final message = MessageResponse.fromJson(event.payload);
-    print(
-      '[WS] Message from: ${message.senderId}, my ID: ${ref.read(authControllerProvider).valueOrNull?.id}',
-    );
-
-    // If I sent this message, ignore it (already handled optimistically + REST)
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
-    if (currentUserId != null && message.senderId == currentUserId) {
-      print('[WS] Message is from self, ignoring');
-      return;
-    }
+    
+    log('[WS_DEBUG] Message sender: ${message.senderId} | Current user: $currentUserId', name: 'WS');
 
-    // Append to message list if that room is open
-    try {
+    final isFromSelf = currentUserId != null && message.senderId == currentUserId;
+
+    // Check if we already have this message locally (deduplication)
+    if (ref.exists(messageControllerProvider(event.roomId))) {
+      final currentMessages = ref.read(messageControllerProvider(event.roomId)).valueOrNull ?? [];
+      final alreadyExists = currentMessages.any((m) => m.id == message.id);
+      
+      if (alreadyExists) {
+        log('[WS_DEBUG] ↳ Message already exists locally, ignoring WS echo', name: 'WS');
+        log('[WS_DEBUG] --------------------------------------------------', name: 'WS');
+        return; // Already handled by optimistic update or previous echo
+      }
+      
+      log('[WS_DEBUG] appendMessage: appending new message from WS', name: 'WS');
       ref
           .read(messageControllerProvider(event.roomId).notifier)
           .appendMessage(message);
-    } catch (_) {
-      // Room not currently open — that's fine
+    } else {
+      log('[WS_DEBUG] appendMessage: provider not alive, skipping append', name: 'WS');
     }
 
     // Use media-aware preview instead of raw content/URL
@@ -124,25 +131,39 @@ void _handleNewMessage(Ref ref, WsEvent event) {
 
     // Check if user is currently viewing this room
     final currentRoomId = ref.read(currentOpenRoomProvider);
-    print(
-      '[WS] _handleNewMessage: room=${event.roomId}, currentOpenRoom=$currentRoomId',
-    );
+    log('[WS_DEBUG] Event Room ID:   ${event.roomId}', name: 'WS');
+    log('[WS_DEBUG] currentOpenRoom: $currentRoomId', name: 'WS');
+
     if (event.roomId == currentRoomId) {
       // Don't increment unread, just update the preview
-      print('[WS] User viewing room, updating preview only');
-      ref
-          .read(chatListControllerProvider.notifier)
-          .updateLastMessage(event.roomId, lastMessage: preview);
+      log('[WS_DEBUG] ↳ Match! User is actively viewing this room. Updating preview ONLY (no unread increment).', name: 'WS');
+      if (ref.exists(chatListControllerProvider)) {
+        ref
+            .read(chatListControllerProvider.notifier)
+            .updateLastMessage(event.roomId, lastMessage: preview);
+      }
+      // Auto-mark as read since the user is viewing this room.
+      if (!isFromSelf && ref.exists(messageControllerProvider(event.roomId))) {
+        ref.read(messageControllerProvider(event.roomId).notifier).markAsRead();
+      }
     } else {
-      // Update chat list: move room to top, increment unread
-      print('[WS] User NOT viewing room, incrementing unread');
-      ref
-          .read(chatListControllerProvider.notifier)
-          .moveRoomToTop(event.roomId, lastMessage: preview);
+      // Update chat list: move room to top. Only increment unread if NOT from self (cross-device).
+      log('[WS_DEBUG] ↳ No match. Moving to top. isFromSelf? $isFromSelf', name: 'WS');
+      if (ref.exists(chatListControllerProvider)) {
+        ref
+            .read(chatListControllerProvider.notifier)
+            .moveRoomToTop(
+              event.roomId, 
+              lastMessage: preview, 
+              incrementUnread: !isFromSelf,
+            );
+      }
     }
   } catch (e, st) {
-    log('Error handling new message: $e, stack: $st', name: 'WS');
+    log('[WS_DEBUG] Error handling new message: $e\n$st', name: 'WS');
   }
+  log('[WS_DEBUG] _handleNewMessage END', name: 'WS');
+  log('[WS_DEBUG] --------------------------------------------------', name: 'WS');
 }
 
 void _handleStatusChanged(Ref ref, WsEvent event) {
@@ -201,9 +222,21 @@ void _handleMessageEdited(Ref ref, WsEvent event) {
   if (messageId == null || content == null) return;
 
   try {
-    ref
-        .read(messageControllerProvider(event.roomId).notifier)
-        .editMessage(messageId, content);
+    if (ref.exists(messageControllerProvider(event.roomId))) {
+      ref
+          .read(messageControllerProvider(event.roomId).notifier)
+          .editMessage(messageId, content);
+    }
+    
+    // Check if this was the last message and update chat list
+    if (ref.exists(chatListControllerProvider)) {
+      // The simplest approach is to update preview if it was text (we don't have message type here easily)
+      ref.read(chatListControllerProvider.notifier).updateLastMessageIfMatch(
+        event.roomId, 
+        messageId: messageId, 
+        newPreview: content,
+      );
+    }
   } catch (_) {}
 }
 
@@ -212,9 +245,20 @@ void _handleMessageDeleted(Ref ref, WsEvent event) {
   if (messageId == null) return;
 
   try {
-    ref
-        .read(messageControllerProvider(event.roomId).notifier)
-        .deleteMessage(messageId);
+    if (ref.exists(messageControllerProvider(event.roomId))) {
+      ref
+          .read(messageControllerProvider(event.roomId).notifier)
+          .deleteMessage(messageId);
+    }
+    
+    // Update chat list if it was the last message
+    if (ref.exists(chatListControllerProvider)) {
+      ref.read(chatListControllerProvider.notifier).updateLastMessageIfMatch(
+        event.roomId, 
+        messageId: messageId, 
+        newPreview: "This message was deleted",
+      );
+    }
   } catch (_) {}
 }
 
@@ -225,6 +269,7 @@ void _handleReactionUpdated(Ref ref, WsEvent event) {
   if (messageId == null || userId == null || emoji == null) return;
 
   try {
+    if (!ref.exists(messageControllerProvider(event.roomId))) return;
     ref
         .read(messageControllerProvider(event.roomId).notifier)
         .updateReaction(messageId, userId, emoji);
@@ -233,12 +278,13 @@ void _handleReactionUpdated(Ref ref, WsEvent event) {
 
 void _handlePresenceSync(Ref ref, WsEvent event) {
   try {
-    final chatListNotifier = ref.read(chatListControllerProvider.notifier);
-    for (final entry in event.payload.entries) {
-      final userId = entry.key;
-      final isOnline = entry.value == true;
-      chatListNotifier.updatePresence(userId, isOnline: isOnline);
-    }
+    if (!ref.exists(chatListControllerProvider)) return;
+
+    // Build the map first, then apply in one state write to avoid N rebuilds.
+    final presenceMap = event.payload.map(
+      (key, value) => MapEntry(key, value == true),
+    );
+    ref.read(chatListControllerProvider.notifier).updatePresenceBatch(presenceMap);
   } catch (e) {
     log('Error handling presence_sync: $e', name: 'WS');
   }
@@ -249,9 +295,11 @@ void _handleUserOnline(Ref ref, WsEvent event, bool isOnline) {
   if (userId == null) return;
 
   try {
-    ref
-        .read(chatListControllerProvider.notifier)
-        .updatePresence(userId, isOnline: isOnline);
+    if (ref.exists(chatListControllerProvider)) {
+      ref
+          .read(chatListControllerProvider.notifier)
+          .updatePresence(userId, isOnline: isOnline);
+    }
   } catch (_) {}
 }
 
@@ -266,14 +314,16 @@ void _handleRoomUpdated(Ref ref, WsEvent event) {
 
   try {
     final lastUpdated = DateTime.parse(lastUpdatedStr);
-    ref
-        .read(chatListControllerProvider.notifier)
-        .handleRoomUpdated(
-          roomId: event.roomId,
-          lastMessage: lastMessage,
-          lastUpdated: lastUpdated,
-          lastSenderId: lastSenderId,
-        );
+    if (ref.exists(chatListControllerProvider)) {
+      ref
+          .read(chatListControllerProvider.notifier)
+          .handleRoomUpdated(
+            roomId: event.roomId,
+            lastMessage: lastMessage,
+            lastUpdated: lastUpdated,
+            lastSenderId: lastSenderId,
+          );
+    }
   } catch (e) {
     log('Error handling room_updated: $e', name: 'WS');
   }
@@ -284,9 +334,11 @@ void _handleTyping(Ref ref, WsEvent event) {
   if (userId == null) return;
 
   try {
-    ref
-        .read(typingControllerProvider(event.roomId).notifier)
-        .handleRemoteTyping(userId, event.type == WsEventType.typingStart);
+    if (ref.exists(typingControllerProvider(event.roomId))) {
+      ref
+          .read(typingControllerProvider(event.roomId).notifier)
+          .handleRemoteTyping(userId, event.type == WsEventType.typingStart);
+    }
   } catch (_) {}
 }
 
@@ -301,14 +353,16 @@ void _handleProfileUpdated(Ref ref, WsEvent event) {
 
   try {
     // Update user info in chat list
-    ref
-        .read(chatListControllerProvider.notifier)
-        .updateUserProfile(
-          userId: userId,
-          displayName: displayName,
-          photoURL: photoURL,
-          bio: bio,
-        );
+    if (ref.exists(chatListControllerProvider)) {
+      ref
+          .read(chatListControllerProvider.notifier)
+          .updateUserProfile(
+            userId: userId,
+            displayName: displayName,
+            photoURL: photoURL,
+            bio: bio,
+          );
+    }
     log(
       'Updated profile for user $userId: name=$displayName, photo=$photoURL',
       name: 'WS',
@@ -382,6 +436,20 @@ class TypingController extends _$TypingController {
   }
 }
 
+void _handleRoomDeleted(Ref ref, WsEvent event) {
+  final roomId = event.payload['roomId'] as String? ?? event.roomId;
+  if (roomId.isEmpty) return;
+
+  try {
+    if (ref.exists(chatListControllerProvider)) {
+      ref.read(chatListControllerProvider.notifier).removeRoomLocally(roomId);
+    }
+    log('Room $roomId deleted by remote participant', name: 'WS');
+  } catch (e) {
+    log('Error handling room_deleted: $e', name: 'WS');
+  }
+}
+
 void _handleNotification(Ref ref, WsEvent event) {
   try {
     final notif = NotificationModel.fromJson(event.payload);
@@ -406,11 +474,18 @@ void _handleConnectionAccepted(Ref ref, WsEvent event) async {
     final room = RoomResponse.fromJson(roomData);
 
     // Add the room to the chat list
-    ref.read(chatListControllerProvider.notifier).upsertRoom(room);
+    if (ref.exists(chatListControllerProvider)) {
+      ref.read(chatListControllerProvider.notifier).upsertRoom(room);
+    }
     log('Connection accepted: requesting presence sync', name: 'WS');
     await Future.delayed(const Duration(milliseconds: 300));
-    ref.read(webSocketServiceProvider).requestPresenceSync();
-    log('Connection accepted: presence sync requested', name: 'WS');
+    // Guard: provider container may have been disposed during the delay
+    try {
+      ref.read(webSocketServiceProvider).requestPresenceSync();
+      log('Connection accepted: presence sync requested', name: 'WS');
+    } catch (_) {
+      log('Connection accepted: presence sync skipped (ref disposed)', name: 'WS');
+    }
 
     // Get the other user's ID for notification
     final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;

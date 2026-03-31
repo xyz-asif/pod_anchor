@@ -255,12 +255,14 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       await ref
                           .read(chatListControllerProvider.notifier)
                           .deleteRoom(room.id);
+                      if (!context.mounted) return;
                       AppSnackbar.show(
                         context,
                         message: 'Chat deleted',
                         type: SnackbarType.success,
                       );
                     } catch (e) {
+                      if (!context.mounted) return;
                       AppSnackbar.show(
                         context,
                         message: 'Failed to delete chat',

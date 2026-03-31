@@ -87,11 +87,25 @@ class CloudinaryService {
 
   /// Generate a Cloudinary thumbnail URL for document preview (PDF, DOCX, etc.)
   /// Returns null if the URL is not a Cloudinary URL or not a supported format.
-  static String? generateDocumentThumbnail(String uploadUrl, {int width = 400, int height = 400}) {
+  static String? generateDocumentThumbnail(
+    String uploadUrl, {
+    int width = 400,
+    int height = 400,
+  }) {
     if (!uploadUrl.contains('cloudinary.com/')) return null;
 
     // Supported formats for Cloudinary document thumbnail generation
-    final supportedExtensions = ['pdf', 'docx', 'pptx', 'xlsx', 'ai', 'eps', 'psd', 'tiff', 'tif'];
+    final supportedExtensions = [
+      'pdf',
+      'docx',
+      'pptx',
+      'xlsx',
+      'ai',
+      'eps',
+      'psd',
+      'tiff',
+      'tif',
+    ];
     final extension = uploadUrl.split('.').last.toLowerCase().split('?').first;
     if (!supportedExtensions.contains(extension)) return null;
 

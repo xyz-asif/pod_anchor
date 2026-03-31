@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:chatbee/features/auth/repos/auth_repo.dart';
@@ -79,11 +80,36 @@ class AuthController extends _$AuthController {
     final repo = ref.read(authRepoProvider);
     final apiClient = ref.read(apiClientProvider);
 
-    // No Firebase user AND no stored token → truly logged out
-    if (!repo.isSignedIn && !apiClient.hasToken) return;
+    // ── Step 0: Wait for Firebase Auth to settle ──────────────────────────
+    // On cold start (especially release APK), FirebaseAuth.currentUser can
+    // be null even though the user has a persisted session. The native SDK
+    // restores auth state asynchronously via platform channels. We must wait
+    // for a non-null user (or timeout if genuinely signed out).
+    bool firebaseReady = repo.isSignedIn;
+    if (!firebaseReady) {
+      log('Firebase currentUser is null, waiting for auth restore…', name: 'AUTH');
+      try {
+        final user = await FirebaseAuth.instance
+            .authStateChanges()
+            .firstWhere((user) => user != null)
+            .timeout(const Duration(seconds: 5));
+        firebaseReady = user != null;
+        log('Firebase auth restored: uid=${user?.uid}', name: 'AUTH');
+      } catch (e) {
+        // Timeout or no user — Firebase genuinely has no session
+        log('Firebase auth not restored (timeout or no session): $e', name: 'AUTH');
+        firebaseReady = false;
+      }
+    }
 
-    // Firebase session is gone but we have a stale stored token → clean up
-    if (!repo.isSignedIn && apiClient.hasToken) {
+    // No Firebase user AND no stored token → truly logged out
+    if (!firebaseReady && !apiClient.hasToken) {
+      log('No Firebase user and no stored token — truly signed out', name: 'AUTH');
+      return;
+    }
+
+    // Firebase session is gone (even after waiting) but we have a stale token → clean up
+    if (!firebaseReady && apiClient.hasToken) {
       log('Firebase session expired, clearing stale token', name: 'AUTH');
       await apiClient.clearToken();
       ref.read(authNotifierProvider).logout();
@@ -92,7 +118,7 @@ class AuthController extends _$AuthController {
 
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      // 1. Force-refresh the Firebase token (the key fix)
+      // 1. Force-refresh the Firebase token
       await repo.refreshToken();
 
       // 2. Fetch profile from backend with the fresh token
@@ -104,20 +130,39 @@ class AuthController extends _$AuthController {
         ref.read(webSocketServiceProvider).connect(token);
       }
 
+      // 4. Start WS event handler
+      ref.read(wsEventHandlerProvider);
+
+      // 5. Register FCM token
+      final notifService = ref.read(notificationServiceProvider);
+      final notifRepo = ref.read(notificationRepoProvider);
+      notifService.registerTokenWithBackend(notifRepo);
+
       return user;
     });
 
-    // If restore failed, check if it's an auth issue → force logout
-    if (state.hasError) {
-      final error = state.error.toString();
-      if (error.contains('Invalid token') ||
-          error.contains('401') ||
-          error.contains('INVALID_ID_TOKEN') ||
-          error.contains('USER_NOT_FOUND')) {
-        log('Auth failure during restore, forcing logout', name: 'AUTH');
+    if (state.hasValue && state.value != null) {
+      // ── Success: ensure router knows we're logged in ──────────────────
+      log('Session restored successfully', name: 'AUTH');
+      ref.read(authNotifierProvider).login();
+    } else if (state.hasError) {
+      // ── Failure: only logout on definitive auth errors ────────────────
+      final error = state.error;
+      final isAuthError = error is ServerFailure &&
+          (error.message.contains('Invalid token') ||
+           error.message.contains('INVALID_ID_TOKEN') ||
+           error.message.contains('USER_NOT_FOUND'));
+
+      if (isAuthError) {
+        log('Definitive auth failure during restore, forcing logout', name: 'AUTH');
         await apiClient.clearToken();
         ref.read(authNotifierProvider).logout();
         state = const AsyncValue.data(null);
+      } else {
+        // Network error, timeout, etc. — keep error state so SessionGate
+        // shows Retry button. Do NOT logout — user can retry when network
+        // is back, or lifecycle handler will retry automatically.
+        log('Recoverable error during restore (keeping session): $error', name: 'AUTH');
       }
     }
   }

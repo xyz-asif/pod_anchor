@@ -154,6 +154,16 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       _audioState = AudioState.uploaded;
     }
 
+    // Seed word count from existing content so the publish/update button is
+    // enabled immediately when opening a draft or an existing poem — without
+    // requiring the user to type anything first.
+    if (_currentPoem != null) {
+      final text = _quillController.document.toPlainText().trim();
+      _wordCount = text.isEmpty
+          ? 0
+          : text.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
+    }
+
     // Word count listener
     _documentChangesSub = _quillController.document.changes.listen((_) {
       _hasEdits = true;
@@ -225,21 +235,42 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   }
 
   bool get _hasUnsavedChanges {
-    final currentTitle = _titleController.text.trim();
-
     if (_currentPoem == null) {
       return _quillController.document.toPlainText().trim().isNotEmpty ||
-          currentTitle.isNotEmpty;
+          _titleController.text.trim().isNotEmpty;
     }
 
-    // Quick check: if no document edits and title unchanged, skip expensive delta comparison
-    if (!_hasEdits && currentTitle == _currentPoem!.title.trim()) return false;
+    // Title
+    if (_titleController.text.trim() != _currentPoem!.title.trim()) return true;
 
+    // Description
+    if (_descriptionController.text.trim() !=
+        _currentPoem!.description.trim()) return true;
+
+    // Hashtags (order-independent set comparison)
+    final originalTags = Set<String>.from(_currentPoem!.hashtags);
+    final currentTags = Set<String>.from(_allHashtags);
+    if (originalTags.length != currentTags.length ||
+        !originalTags.containsAll(currentTags)) return true;
+
+    // Audio — removed an existing track, or a new one was recorded/uploaded
+    final hadAudio = _currentPoem!.hasAudio;
+    final hasAudioNow = _audioState != AudioState.idle;
+    if (hadAudio != hasAudioNow) return true;
+    if (hasAudioNow && _audioURL != _currentPoem!.audioUrl) return true;
+
+    // Copyright toggle
+    if (_isOriginal != _currentPoem!.isOriginal) return true;
+
+    // Text alignment
+    if (_textAlign != _currentPoem!.textAlign) return true;
+
+    // Content delta (expensive — skip if document was never touched)
+    if (!_hasEdits) return false;
     final currentDelta = jsonEncode(
       _quillController.document.toDelta().toJson(),
     );
-    return currentDelta != _currentPoem!.contentJson ||
-        currentTitle != _currentPoem!.title.trim();
+    return currentDelta != _currentPoem!.contentJson;
   }
 
   Future<bool> _onWillPop() async {
@@ -581,8 +612,16 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   // ── Publish flow ──
 
-  bool get _isValidToPublish =>
-      _wordCount > 0 && _wordCount <= 150 && !_isPublishing;
+  bool get _isValidToPublish {
+    if (_wordCount <= 0 || _wordCount > 150 || _isPublishing) return false;
+    // When updating an already-published poem, only enable if something changed.
+    // For a draft→Publish or a brand-new poem the visibility change itself is
+    // the intended action, so no further change check is needed.
+    if (widget.poemId != null && widget.existingPoem?.isDraft != true) {
+      return _hasUnsavedChanges;
+    }
+    return true;
+  }
 
   void _prepareDocumentForSave() {
     final doc = _quillController.document;
@@ -1084,7 +1123,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                 ),
               ),
               child: Text(
-                'Draft',
+                widget.existingPoem != null && !widget.existingPoem!.isPublic
+                    ? 'Update Draft'
+                    : 'Draft',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.sp),
               ),
             ),
@@ -1112,7 +1153,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
             elevation: 0,
           ),
           child: Text(
-            widget.poemId != null ? 'Update Poem' : 'Publish Poem',
+            widget.poemId == null
+                ? 'Publish Poem'
+                : (widget.existingPoem?.isDraft == true
+                    ? 'Publish'
+                    : 'Update Poem'),
             style: TextStyle(
               fontSize: 16.sp,
               fontWeight: FontWeight.w600,

@@ -4,7 +4,7 @@ import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/shared/models/api_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 part 'api_client.g.dart';
@@ -21,7 +21,6 @@ class ApiClient {
   factory ApiClient() => _instance;
 
   late final Dio _dio;
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   static const String _tokenKey = 'auth_token';
 
   ApiClient._internal() {
@@ -85,29 +84,32 @@ class ApiClient {
     return null;
   }
 
-  /// Initialize: Load saved token from secure storage and set in headers
+  /// Initialize: Load saved token from SharedPreferences and set in headers
   Future<void> initialize() async {
-    final token = await _secureStorage.read(key: _tokenKey);
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey);
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
-      log('Token loaded from secure storage and set in headers', name: 'API_CLIENT');
+      log('Token loaded from SharedPreferences and set in headers', name: 'API_CLIENT');
     } else {
-      log('No saved token found in secure storage', name: 'API_CLIENT');
+      log('No saved token found in SharedPreferences', name: 'API_CLIENT');
     }
   }
 
-  /// Set auth token after login and save to secure storage
+  /// Set auth token after login and persist to SharedPreferences
   Future<void> setToken(String token) async {
     _dio.options.headers['Authorization'] = 'Bearer $token';
-    await _secureStorage.write(key: _tokenKey, value: token);
-    log('Token saved to storage', name: 'API_CLIENT');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenKey, token);
+    log('Token saved to SharedPreferences', name: 'API_CLIENT');
   }
 
   /// Remove auth token on logout
   Future<void> clearToken() async {
     _dio.options.headers.remove('Authorization');
-    await _secureStorage.delete(key: _tokenKey);
-    log('Token cleared from storage and headers', name: 'API_CLIENT');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    log('Token cleared from SharedPreferences and headers', name: 'API_CLIENT');
   }
 
   /// Check if token is currently set in headers

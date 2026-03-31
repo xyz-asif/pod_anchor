@@ -18,29 +18,43 @@ class PoemShareSheet extends StatefulWidget {
 }
 
 class _PoemShareSheetState extends State<PoemShareSheet> {
-  bool _isGenerating = false;
+  bool _isSharing = false;
+  bool _isDownloading = false;
 
-  Future<void> _shareAsText() async {
+  Future<void> _shareImage() async {
+    if (_isSharing || _isDownloading) return;
     HapticFeedback.lightImpact();
-    Navigator.pop(context);
-    await PoemShareService.shareAsText(widget.poem);
+    setState(() => _isSharing = true);
+
+    try {
+      await PoemShareService.shareImageToApps(context, widget.poem);
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSharing = false);
+      AppSnackbar.show(
+        context,
+        message: 'Failed to share image',
+        type: SnackbarType.error,
+      );
+    }
   }
 
   Future<void> _downloadImage() async {
-    if (_isGenerating) return;
+    if (_isSharing || _isDownloading) return;
     HapticFeedback.lightImpact();
-    setState(() => _isGenerating = true);
+    setState(() => _isDownloading = true);
 
     try {
       final savedPath =
           await PoemShareService.generateAndSaveImage(context, widget.poem);
 
       if (!mounted) return;
-      setState(() => _isGenerating = false);
+      setState(() => _isDownloading = false);
       Navigator.pop(context);
 
       if (savedPath != null) {
-        // Strip file:// prefix if present — open_filex needs a plain path
         String cleanPath = savedPath;
         if (cleanPath.startsWith('file://')) {
           cleanPath = Uri.parse(cleanPath).toFilePath();
@@ -48,13 +62,11 @@ class _PoemShareSheetState extends State<PoemShareSheet> {
 
         AppSnackbar.show(
           context,
-          message: 'Image downloaded successfully',
+          message: 'Image saved to gallery',
           type: SnackbarType.success,
           duration: const Duration(seconds: 5),
           actionLabel: 'View',
-          onAction: () {
-            OpenFilex.open(cleanPath);
-          },
+          onAction: () => OpenFilex.open(cleanPath),
         );
       } else {
         AppSnackbar.show(
@@ -65,7 +77,7 @@ class _PoemShareSheetState extends State<PoemShareSheet> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isGenerating = false);
+      setState(() => _isDownloading = false);
       Navigator.pop(context);
       AppSnackbar.show(
         context,
@@ -108,18 +120,19 @@ class _PoemShareSheetState extends State<PoemShareSheet> {
           SizedBox(height: 20.h),
 
           _buildOption(
-            icon: Icons.text_fields_rounded,
-            label: 'Share as Text',
-            subtitle: 'Send poem text to other apps',
-            onTap: _shareAsText,
+            icon: Icons.share_rounded,
+            label: 'Share Image',
+            subtitle: 'Send to WhatsApp, Instagram & more',
+            onTap: _shareImage,
+            isLoading: _isSharing,
           ),
           SizedBox(height: 12.h),
           _buildOption(
-            icon: Icons.image_outlined,
-            label: 'Download Image',
-            subtitle: 'Save styled poem image to gallery',
+            icon: Icons.download_outlined,
+            label: 'Save to Gallery',
+            subtitle: 'Download styled poem image',
             onTap: _downloadImage,
-            isLoading: _isGenerating,
+            isLoading: _isDownloading,
           ),
         ],
       ),
@@ -137,7 +150,7 @@ class _PoemShareSheetState extends State<PoemShareSheet> {
       color: AppTheme.featureBackgroundColor,
       borderRadius: BorderRadius.circular(12.r),
       child: InkWell(
-        onTap: isLoading ? null : onTap,
+        onTap: (isLoading || _isSharing || _isDownloading) ? null : onTap,
         borderRadius: BorderRadius.circular(12.r),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),

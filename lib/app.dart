@@ -57,55 +57,54 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
+          try {
+            // ── Step 1: Refresh Firebase token ────────────────────────────
+            // Firebase tokens expire after 1 hour. If app was backgrounded
+            // longer than that, stored token is stale and WS server will
+            // reject it — causing a permanent disconnect until app restarts.
+            final freshToken = await ref
+                .read(authControllerProvider.notifier)
+                .getAndRefreshToken();
 
-          // ── Step 1: Refresh Firebase token ──────────────────────────────
-          // Firebase tokens expire after 1 hour. If app was backgrounded
-          // longer than that, stored token is stale and WS server will
-          // reject it — causing a permanent disconnect until app restarts.
-          final freshToken = await ref
-              .read(authControllerProvider.notifier)
-              .getAndRefreshToken();
+            if (!mounted) return;
 
-          if (!mounted) return;
+            // Inject fresh token before reconnecting
+            if (freshToken != null) {
+              wsService.updateToken(freshToken);
+            }
 
-          // Inject fresh token before reconnecting
-          if (freshToken != null) {
-            wsService.updateToken(freshToken);
-          }
+            // ── Step 2: Reconnect WebSocket ────────────────────────────────
+            final connected = await wsService.connectIfNeeded(
+              timeout: const Duration(seconds: 8),
+            );
 
-          // ── Step 2: Reconnect WebSocket ──────────────────────────────────
-          final connected = await wsService.connectIfNeeded(
-            timeout: const Duration(seconds: 8),
-          );
+            if (!mounted) return;
 
-          if (!mounted) return;
+            if (connected) {
+              log('WS reconnected, syncing presence', name: 'LIFECYCLE');
+              wsService.sendPresenceStatus(true);
+              wsService.requestPresenceSync();
+            } else {
+              log('WS reconnect failed (will retry via backoff)', name: 'LIFECYCLE');
+            }
 
-          if (connected) {
-            log('WS reconnected, syncing presence', name: 'LIFECYCLE');
-            wsService.sendPresenceStatus(true);
-            wsService.requestPresenceSync();
-          } else {
-            log('WS reconnect failed (will retry via backoff)', name: 'LIFECYCLE');
-            // The backoff timer in WebSocketService handles retries automatically.
-            // Also, connectivity_plus listener will trigger an instant retry
-            // once network is available again.
-          }
+            // ── Step 3: Refresh UI data ────────────────────────────────────
+            ref.read(chatListControllerProvider.notifier).backgroundRefresh();
+            ref.read(friendsControllerProvider.notifier).refresh();
+            ref.read(unreadNotificationCountProvider.notifier).refresh();
 
-          // ── Step 3: Refresh UI data ──────────────────────────────────────
-          // Background refresh is non-blocking and doesn't show a spinner.
-          ref.read(chatListControllerProvider.notifier).backgroundRefresh();
-          ref.read(friendsControllerProvider.notifier).refresh();
-          // Re-sync notification badge count (fix #4 — drift prevention)
-          ref.read(unreadNotificationCountProvider.notifier).refresh();
-
-          // ── Step 4: Recover stuck session ─────────────────────────────────
-          // If the app cold-started offline, restoreSession() failed and
-          // SessionGate is stuck on the error screen. By this point the
-          // network is back (WS connected above), so retry session restore.
-          final authState = ref.read(authControllerProvider);
-          if (authState.hasError) {
-            log('Auth in error state — retrying session restore', name: 'LIFECYCLE');
-            ref.read(authControllerProvider.notifier).restoreSession();
+            // ── Step 4: Recover stuck session ─────────────────────────────
+            // If the app cold-started offline, restoreSession() failed and
+            // SessionGate is stuck on the error screen. Retry now that
+            // network is back.
+            if (!mounted) return;
+            final authState = ref.read(authControllerProvider);
+            if (authState.hasError) {
+              log('Auth in error state — retrying session restore', name: 'LIFECYCLE');
+              ref.read(authControllerProvider.notifier).restoreSession();
+            }
+          } catch (e, st) {
+            log('Lifecycle resume handler error: $e\n$st', name: 'LIFECYCLE');
           }
         });
         break;
