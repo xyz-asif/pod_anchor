@@ -38,7 +38,7 @@ class AuthController extends _$AuthController {
       ref.read(wsEventHandlerProvider);
 
       // Update auth state so the router redirects to /home
-      ref.read(authNotifierProvider).login();
+      await ref.read(authNotifierProvider).login();
 
       // Register FCM token with backend (requires auth)
       final notifService = ref.read(notificationServiceProvider);
@@ -92,7 +92,7 @@ class AuthController extends _$AuthController {
         final user = await FirebaseAuth.instance
             .authStateChanges()
             .firstWhere((user) => user != null)
-            .timeout(const Duration(seconds: 5));
+            .timeout(const Duration(seconds: 10));
         firebaseReady = user != null;
         log('Firebase auth restored: uid=${user?.uid}', name: 'AUTH');
       } catch (e) {
@@ -108,12 +108,13 @@ class AuthController extends _$AuthController {
       return;
     }
 
-    // Firebase session is gone (even after waiting) but we have a stale token → clean up
+    // If Firebase timed out but a stored token exists, fall through and try
+    // the API call. The token may still be valid (Firebase tokens last 1 hour).
+    // If it's expired, the 401 interceptor will attempt refresh; if that fails,
+    // the definitive auth error handler below will correctly log out.
+    // DO NOT logout here — a slow Firebase restore is not the same as no session.
     if (!firebaseReady && apiClient.hasToken) {
-      log('Firebase session expired, clearing stale token', name: 'AUTH');
-      await apiClient.clearToken();
-      ref.read(authNotifierProvider).logout();
-      return;
+      log('Firebase restore timed out but stored token exists — attempting session with stored token', name: 'AUTH');
     }
 
     state = const AsyncValue.loading();

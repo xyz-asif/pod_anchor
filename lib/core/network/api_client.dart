@@ -4,7 +4,7 @@ import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/shared/models/api_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chatbee/core/utils/hive_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 part 'api_client.g.dart';
@@ -21,7 +21,6 @@ class ApiClient {
   factory ApiClient() => _instance;
 
   late final Dio _dio;
-  static const String _tokenKey = 'auth_token';
 
   ApiClient._internal() {
     _dio = Dio(
@@ -84,32 +83,29 @@ class ApiClient {
     return null;
   }
 
-  /// Initialize: Load saved token from SharedPreferences and set in headers
+  /// Initialize: Load saved token from Hive and set in headers
   Future<void> initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_tokenKey);
+    final token = HiveStorage.getToken();
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
-      log('Token loaded from SharedPreferences and set in headers', name: 'API_CLIENT');
+      log('Token loaded from Hive and set in headers', name: 'API_CLIENT');
     } else {
-      log('No saved token found in SharedPreferences', name: 'API_CLIENT');
+      log('No saved token found in Hive', name: 'API_CLIENT');
     }
   }
 
-  /// Set auth token after login and persist to SharedPreferences
+  /// Set auth token after login and persist to Hive
   Future<void> setToken(String token) async {
     _dio.options.headers['Authorization'] = 'Bearer $token';
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
-    log('Token saved to SharedPreferences', name: 'API_CLIENT');
+    await HiveStorage.setToken(token);
+    log('Token saved to Hive', name: 'API_CLIENT');
   }
 
   /// Remove auth token on logout
   Future<void> clearToken() async {
     _dio.options.headers.remove('Authorization');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    log('Token cleared from SharedPreferences and headers', name: 'API_CLIENT');
+    await HiveStorage.clearToken();
+    log('Token cleared from Hive and headers', name: 'API_CLIENT');
   }
 
   /// Check if token is currently set in headers
