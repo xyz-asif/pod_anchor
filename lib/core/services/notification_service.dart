@@ -8,8 +8,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:go_router/go_router.dart';
 import 'package:chatbee/features/notifications/repos/notification_repo.dart';
-import 'package:chatbee/features/notifications/utils/notification_navigator.dart';
 import 'package:chatbee/core/routes/app_router.dart';
 
 part 'notification_service.g.dart';
@@ -180,23 +180,19 @@ class NotificationService {
       _showLocalNotification(message);
     });
 
-    // 2. Background → foreground tap: navigate immediately (app is running)
+    // 2. Background → foreground tap: navigate to notifications page (app is running)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       log(
         'Message clicked! App opened from background: ${message.messageId}',
         name: 'FCM',
       );
       final data = message.data;
-      final resourceType = data['resourceType'] as String?;
-      final resourceId = data['resourceId'] as String?;
-      if (resourceType != null && resourceId != null) {
-        final context = rootNavigatorKey.currentContext;
-        if (context != null) {
-          navigateToNotification(context, resourceType, resourceId);
-        } else {
-          // Context not ready yet — store for later
-          _pendingNotificationData = data;
-        }
+      final context = rootNavigatorKey.currentContext;
+      if (context != null) {
+        _handleNotificationNavigation(context, data);
+      } else {
+        // Context not ready yet — store for later
+        _pendingNotificationData = data;
       }
     });
 
@@ -219,10 +215,45 @@ class NotificationService {
     final resourceType = data['resourceType'] as String?;
     final resourceId = data['resourceId'] as String?;
 
-    if (resourceType != null && resourceType.isNotEmpty &&
-        resourceId != null && resourceId.isNotEmpty) {
-      navigateToNotification(context, resourceType, resourceId);
+    // Chat messages go directly to the room; everything else goes to the
+    // notifications page so users can see all their notifications in context.
+    if (resourceType == 'chat_room' &&
+        resourceId != null &&
+        resourceId.isNotEmpty) {
+      context.push('/chat/$resourceId');
+    } else {
+      context.push('/notifications');
     }
+  }
+
+  /// Shows a local notification for an incoming chat message received via WebSocket
+  /// when the user is not currently viewing that room.
+  void showLocalMessageNotification({
+    required String roomId,
+    required String senderName,
+    required String preview,
+  }) {
+    _localNotifications.show(
+      id: roomId.hashCode,
+      title: senderName,
+      body: preview,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'high_importance_channel',
+          'High Importance Notifications',
+          channelDescription: 'This channel is used for important notifications.',
+          icon: '@mipmap/ic_launcher',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+      payload: jsonEncode({'resourceType': 'chat_room', 'resourceId': roomId}),
+    );
   }
 
   /// Shows a local notification for foreground messages.

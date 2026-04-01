@@ -251,6 +251,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final countsAsync = ref.watch(ownFollowCountsProvider);
     final ownProfile = countsAsync.valueOrNull;
 
+    // Compute public poem count from loaded poems to exclude drafts.
+    // Falls back to user.postsCount (backend value) while poems are still loading.
+    final poemsAsync = ref.watch(myPoemsControllerProvider);
+    final publicPoemCount =
+        poemsAsync.valueOrNull?.where((p) => p.visibility == 'public').length ??
+        (user?.postsCount ?? 0);
+
     return Scaffold(
       body: user == null
           ? const Center(child: CircularProgressIndicator())
@@ -465,40 +472,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                                         Expanded(
                                           child: _StatItem(
                                             label: 'Poems',
-                                            value: user.postsCount,
+                                            value: publicPoemCount,
                                           ),
-                                        ),
-                                        Expanded(
-                                          child: GestureDetector(
-                                          onTap: () {
-                                            HapticFeedback.selectionClick();
-                                            context.push(
-                                              '/profile/${user.id}/followers',
-                                            );
-                                          },
-                                          child: _StatItem(
-                                            label: 'Followers',
-                                            value:
-                                                ownProfile?.followersCount ??
-                                                user.followersCount,
-                                          ),
-                                        ),
                                         ),
                                         Expanded(
                                           child: GestureDetector(
                                             onTap: () {
-                                            HapticFeedback.selectionClick();
-                                            context.push(
-                                              '/profile/${user.id}/following',
-                                            );
-                                          },
-                                          child: _StatItem(
-                                            label: 'Following',
-                                            value:
-                                                ownProfile?.followingCount ??
-                                                user.followingCount,
+                                              HapticFeedback.selectionClick();
+                                              context.push(
+                                                '/profile/${user.id}/followers',
+                                              );
+                                            },
+                                            child: _StatItem(
+                                              label: 'Followers',
+                                              value:
+                                                  ownProfile?.followersCount ??
+                                                  user.followersCount,
+                                            ),
                                           ),
                                         ),
+                                        Expanded(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              HapticFeedback.selectionClick();
+                                              context.push(
+                                                '/profile/${user.id}/following',
+                                              );
+                                            },
+                                            child: _StatItem(
+                                              label: 'Following',
+                                              value:
+                                                  ownProfile?.followingCount ??
+                                                  user.followingCount,
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -608,6 +615,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         Tab(text: 'Drafts'),
                       ],
                     ),
+                    topPadding: MediaQuery.of(context).padding.top,
                   ),
                 ),
               ],
@@ -847,12 +855,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
-  _SliverAppBarDelegate(this.tabBar);
+  final double topPadding;
+
+  _SliverAppBarDelegate(this.tabBar, {this.topPadding = 0});
 
   @override
-  double get minExtent => tabBar.preferredSize.height;
+  double get minExtent => tabBar.preferredSize.height + topPadding;
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get maxExtent => tabBar.preferredSize.height + topPadding;
 
   @override
   Widget build(
@@ -860,11 +870,17 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(color: AppTheme.surfaceColor, child: tabBar);
+    return Container(
+      color: AppTheme.surfaceColor,
+      padding: EdgeInsets.only(top: topPadding),
+      child: tabBar,
+    );
   }
 
   @override
-  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => false;
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return oldDelegate.topPadding != topPadding || oldDelegate.tabBar != tabBar;
+  }
 }
 
 class _StatItem extends StatelessWidget {

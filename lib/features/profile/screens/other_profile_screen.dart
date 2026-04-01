@@ -218,7 +218,15 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                                     Expanded(
                                       child: _StatItem(
                                         label: 'Poems',
-                                        value: profile.postsCount,
+                                        value: state.isLoadingPoems
+                                            ? profile.postsCount
+                                            : state.poems
+                                                  .where(
+                                                    (p) =>
+                                                        p.visibility ==
+                                                        'public',
+                                                  )
+                                                  .length,
                                       ),
                                     ),
                                     Expanded(
@@ -386,6 +394,7 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                     Tab(text: 'Reposts'),
                   ],
                 ),
+                topPadding: MediaQuery.of(context).padding.top,
               ),
             ),
           ],
@@ -526,12 +535,14 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
-  _TabBarDelegate(this.tabBar);
+  final double topPadding;
+
+  _TabBarDelegate(this.tabBar, {this.topPadding = 0});
 
   @override
-  double get minExtent => tabBar.preferredSize.height;
+  double get minExtent => tabBar.preferredSize.height + topPadding;
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get maxExtent => tabBar.preferredSize.height + topPadding;
 
   @override
   Widget build(
@@ -539,11 +550,17 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(color: AppTheme.surfaceColor, child: tabBar);
+    return Container(
+      color: AppTheme.surfaceColor,
+      padding: EdgeInsets.only(top: topPadding),
+      child: tabBar,
+    );
   }
 
   @override
-  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
+  bool shouldRebuild(_TabBarDelegate oldDelegate) {
+    return oldDelegate.topPadding != topPadding || oldDelegate.tabBar != tabBar;
+  }
 }
 
 class _StatItem extends StatelessWidget {

@@ -307,7 +307,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => CommentBottomSheet(poemId: widget.poem.id),
+      builder: (_) => CommentBottomSheet(poemId: widget.poem.id, poemAuthorId: widget.poem.author.id),
     );
   }
 

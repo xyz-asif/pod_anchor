@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/notifications/models/notification_model.dart';
 import 'package:chatbee/features/notifications/repos/notification_repo.dart';
@@ -123,10 +124,15 @@ class UnreadNotificationCount extends _$UnreadNotificationCount {
   }
 
   Future<void> _fetchCount() async {
+    final previous = state;
     try {
       final count = await ref.read(notificationRepoProvider).getUnreadCount();
       state = count;
-    } catch (_) {}
+    } catch (e) {
+      // Preserve previous count on failure so the badge doesn't vanish.
+      state = previous;
+      log('Failed to fetch unread notification count: $e', name: 'NOTIF');
+    }
   }
 
   void increment() => state = state + 1;

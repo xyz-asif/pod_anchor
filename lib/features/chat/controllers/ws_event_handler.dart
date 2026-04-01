@@ -11,6 +11,7 @@ import 'package:chatbee/features/chat/models/room_response.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
 import 'package:chatbee/features/notifications/models/notification_model.dart';
 import 'package:chatbee/features/notifications/controllers/notification_controller.dart';
+import 'package:chatbee/core/services/notification_service.dart';
 
 part 'ws_event_handler.g.dart';
 
@@ -153,10 +154,35 @@ void _handleNewMessage(Ref ref, WsEvent event) {
         ref
             .read(chatListControllerProvider.notifier)
             .moveRoomToTop(
-              event.roomId, 
-              lastMessage: preview, 
+              event.roomId,
+              lastMessage: preview,
               incrementUnread: !isFromSelf,
             );
+      }
+
+      // Show a local notification so the user knows a message arrived while
+      // they're elsewhere in the app (backend may not send FCM for chat).
+      if (!isFromSelf) {
+        String senderName = 'New message';
+        final rooms = ref.read(chatListControllerProvider).valueOrNull;
+        if (rooms != null) {
+          for (final room in rooms) {
+            if (room.id == event.roomId) {
+              for (final p in room.participants) {
+                if (p.id == message.senderId) {
+                  senderName = p.displayName ?? senderName;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        ref.read(notificationServiceProvider).showLocalMessageNotification(
+          roomId: event.roomId,
+          senderName: senderName,
+          preview: preview,
+        );
       }
     }
   } catch (e, st) {
