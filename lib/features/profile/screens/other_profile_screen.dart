@@ -147,10 +147,13 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                           children: [
                             IconButton(
                               icon: const Icon(
-                                Icons.arrow_back_ios,
+                                Icons.arrow_back,
                                 color: Colors.white,
                               ),
-                              onPressed: () => context.pop(),
+                              onPressed: () {
+                                HapticFeedback.lightImpact();
+                                context.pop();
+                              },
                             ),
                             Expanded(
                               child: Center(

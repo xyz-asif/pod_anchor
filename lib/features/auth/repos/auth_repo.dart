@@ -134,6 +134,7 @@ class AuthRepo {
   Future<void> attemptSilentSignIn() async {
     await _googleSignIn.attemptLightweightAuthentication();
   }
+
 }
 
 @riverpod

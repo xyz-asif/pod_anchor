@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -60,7 +61,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   void _onItemTapped(int index) {
     if (index == _currentIndex) return;
-
+    HapticFeedback.selectionClick();
     setState(() {
       _animationControllers[_currentIndex].reverse();
       _currentIndex = index;
@@ -74,9 +75,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: _buildBottomNavBar(),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/editor'),
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          context.push('/editor');
+        },
         backgroundColor: AppTheme.primaryColor,
-        child: Icon(Icons.edit_rounded, color: Colors.white, size: 24.r),
+        child: Icon(Icons.edit_outlined, color: Colors.white, size: 24.r),
       ),
     );
   }

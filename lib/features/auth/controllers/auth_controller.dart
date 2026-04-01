@@ -108,13 +108,12 @@ class AuthController extends _$AuthController {
       return;
     }
 
-    // If Firebase timed out but a stored token exists, fall through and try
+    // Firebase timed out but a stored token exists — fall through and try
     // the API call. The token may still be valid (Firebase tokens last 1 hour).
     // If it's expired, the 401 interceptor will attempt refresh; if that fails,
-    // the definitive auth error handler below will correctly log out.
-    // DO NOT logout here — a slow Firebase restore is not the same as no session.
+    // the definitive auth error handler below correctly logs out.
     if (!firebaseReady && apiClient.hasToken) {
-      log('Firebase restore timed out but stored token exists — attempting session with stored token', name: 'AUTH');
+      log('Firebase restore timed out but stored token exists — proceeding with stored token', name: 'AUTH');
     }
 
     state = const AsyncValue.loading();

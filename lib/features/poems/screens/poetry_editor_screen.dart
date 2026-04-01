@@ -164,6 +164,11 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
           : text.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
     }
 
+    // Title / description listeners — trigger rebuild so _isValidToPublish
+    // re-evaluates when the user edits these fields without touching content.
+    _titleController.addListener(() { if (mounted) setState(() {}); });
+    _descriptionController.addListener(() { if (mounted) setState(() {}); });
+
     // Word count listener
     _documentChangesSub = _quillController.document.changes.listen((_) {
       _hasEdits = true;
@@ -614,12 +619,6 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   bool get _isValidToPublish {
     if (_wordCount <= 0 || _wordCount > 150 || _isPublishing) return false;
-    // When updating an already-published poem, only enable if something changed.
-    // For a draft→Publish or a brand-new poem the visibility change itself is
-    // the intended action, so no further change check is needed.
-    if (widget.poemId != null && widget.existingPoem?.isDraft != true) {
-      return _hasUnsavedChanges;
-    }
     return true;
   }
 
@@ -667,6 +666,19 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   Future<void> _onPublish() async {
     if (_isPublishing) return;
+
+    // Updating a published poem with no changes — give feedback instead of a no-op API call.
+    if (widget.poemId != null &&
+        widget.existingPoem?.isDraft != true &&
+        !_hasUnsavedChanges) {
+      AppSnackbar.show(
+        context,
+        message: 'No changes made',
+        type: SnackbarType.info,
+      );
+      return;
+    }
+
     final plainText = _quillController.document.toPlainText().trim();
 
     if (plainText.isEmpty) {
@@ -1043,8 +1055,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios),
+        icon: const Icon(Icons.arrow_back),
         onPressed: () async {
+          HapticFeedback.lightImpact();
           final shouldPop = await _onWillPop();
           if (shouldPop && mounted) context.pop();
         },

@@ -24,8 +24,16 @@ import 'package:chatbee/shared/widgets/app_snackbar.dart';
 class PoemCard extends ConsumerStatefulWidget {
   final PoemModel poem;
   final VoidCallback? onTap;
+  final VoidCallback? onDeleted;
+  final void Function(PoemModel)? onUpdated;
 
-  const PoemCard({super.key, required this.poem, this.onTap});
+  const PoemCard({
+    super.key,
+    required this.poem,
+    this.onTap,
+    this.onDeleted,
+    this.onUpdated,
+  });
 
   @override
   ConsumerState<PoemCard> createState() => _PoemCardState();
@@ -355,6 +363,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
           message: 'Poem deleted',
           type: SnackbarType.success,
         );
+        widget.onDeleted?.call();
       }
     } catch (e) {
       if (mounted) {
@@ -619,10 +628,14 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12.r),
                 ),
-                onSelected: (value) {
+                onSelected: (value) async {
                   switch (value) {
                     case 'edit':
-                      context.push('/editor', extra: widget.poem);
+                      final updated = await context.push<PoemModel>(
+                        '/editor',
+                        extra: widget.poem,
+                      );
+                      if (updated != null) widget.onUpdated?.call(updated);
                       break;
                     case 'delete':
                       _deletePoem();

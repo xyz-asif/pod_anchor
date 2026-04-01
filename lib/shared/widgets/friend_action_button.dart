@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 /// Consistent action button for friends screen
@@ -33,7 +34,10 @@ class FriendActionButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(20.r),
-          onTap: isLoading ? null : onPressed,
+          onTap: isLoading ? null : () {
+            HapticFeedback.lightImpact();
+            onPressed();
+          },
           child: Center(
             child: isLoading
                 ? SizedBox(
@@ -77,7 +81,10 @@ class FriendTextButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(8.r),
-        onTap: isLoading ? null : onPressed,
+        onTap: isLoading ? null : () {
+          HapticFeedback.lightImpact();
+          onPressed();
+        },
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
           decoration: BoxDecoration(

@@ -20,19 +20,17 @@ class AppSnackbar {
     String? actionLabel,
     VoidCallback? onAction,
   }) {
-    // Haptic feedback for non-success snackbars
-    if (type != SnackbarType.success) {
-      switch (type) {
-        case SnackbarType.error:
-          HapticFeedback.heavyImpact();
-          break;
-        case SnackbarType.warning:
-        case SnackbarType.info:
-          HapticFeedback.lightImpact();
-          break;
-        default:
-          break;
-      }
+    switch (type) {
+      case SnackbarType.error:
+        HapticFeedback.heavyImpact();
+        break;
+      case SnackbarType.warning:
+        HapticFeedback.mediumImpact();
+        break;
+      case SnackbarType.success:
+      case SnackbarType.info:
+        HapticFeedback.lightImpact();
+        break;
     }
 
     ScaffoldMessenger.of(context)

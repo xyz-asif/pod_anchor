@@ -59,10 +59,9 @@ void main() async {
     // Run app immediately - don't wait for verification
     runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
   } else {
-    // No session flag - show login immediately
+    // No session flag — show login screen.
     log('No session flag - showing login', name: 'MAIN');
-    
-    // Initialize notification service (permissions and setup)
+
     final notificationService = container.read(notificationServiceProvider);
     await notificationService.initialize();
     log('Notification service initialized', name: 'MAIN');

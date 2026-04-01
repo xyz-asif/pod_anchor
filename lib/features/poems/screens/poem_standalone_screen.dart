@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/widgets/poem_card.dart';
@@ -8,9 +9,9 @@ final poemFutureProvider = FutureProvider.family<PoemModel, String>((ref, id) {
   return ref.read(poemRepoProvider).getPoem(id);
 });
 
-/// Minimal scaffold for deep links and notifications
-/// Shows a single poem in a full-screen card
-class PoemStandaloneScreen extends ConsumerWidget {
+/// Minimal scaffold for deep links and notifications.
+/// Shows a single poem in a full-screen card.
+class PoemStandaloneScreen extends ConsumerStatefulWidget {
   final String poemId;
   final PoemModel? poem; // If passed via extra, show immediately
 
@@ -21,30 +22,73 @@ class PoemStandaloneScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PoemStandaloneScreen> createState() =>
+      _PoemStandaloneScreenState();
+}
+
+class _PoemStandaloneScreenState extends ConsumerState<PoemStandaloneScreen> {
+  /// Holds the latest version of the poem after an in-place edit.
+  /// Null until the user edits and saves; falls back to widget.poem or fetched.
+  PoemModel? _localPoem;
+
+  void _onDeleted() {
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _onUpdated(PoemModel updated) {
+    setState(() => _localPoem = updated);
+    // Invalidate the remote provider so a future re-enter fetches fresh data.
+    ref.invalidate(poemFutureProvider(widget.poemId));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            Navigator.of(context).pop();
+          },
         ),
       ),
-      body: _buildBody(context, ref),
+      body: _buildBody(context),
     );
   }
 
-  Widget _buildBody(BuildContext context, WidgetRef ref) {
-    if (poem != null) {
+  Widget _buildBody(BuildContext context) {
+    // If we have a locally updated poem, show it immediately.
+    if (_localPoem != null) {
       return SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: PoemCard(poem: poem!),
+        child: PoemCard(
+          key: ValueKey('${widget.poemId}_${_localPoem!.updatedAt}'),
+          poem: _localPoem!,
+          onDeleted: _onDeleted,
+          onUpdated: _onUpdated,
+        ),
       );
     }
 
-    final asyncPoem = ref.watch(poemFutureProvider(poemId));
+    // If the poem was passed via navigation extra, show it directly.
+    if (widget.poem != null) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: PoemCard(
+          key: ValueKey(widget.poemId),
+          poem: widget.poem!,
+          onDeleted: _onDeleted,
+          onUpdated: _onUpdated,
+        ),
+      );
+    }
+
+    // Otherwise fetch from network (deep link / notification).
+    final asyncPoem = ref.watch(poemFutureProvider(widget.poemId));
 
     return asyncPoem.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -58,7 +102,8 @@ class PoemStandaloneScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => ref.invalidate(poemFutureProvider(poemId)),
+              onPressed: () =>
+                  ref.invalidate(poemFutureProvider(widget.poemId)),
               child: const Text('Retry'),
             ),
           ],
@@ -66,7 +111,12 @@ class PoemStandaloneScreen extends ConsumerWidget {
       ),
       data: (loadedPoem) => SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: PoemCard(poem: loadedPoem),
+        child: PoemCard(
+          key: ValueKey('${widget.poemId}_${loadedPoem.updatedAt}'),
+          poem: loadedPoem,
+          onDeleted: _onDeleted,
+          onUpdated: _onUpdated,
+        ),
       ),
     );
   }

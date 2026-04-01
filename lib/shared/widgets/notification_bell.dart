@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -11,7 +12,10 @@ class NotificationBell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadCount = ref.watch(unreadNotificationCountProvider);
     return IconButton(
-      onPressed: () => context.push('/notifications'),
+      onPressed: () {
+        HapticFeedback.lightImpact();
+        context.push('/notifications');
+      },
       icon: Badge(
         isLabelVisible: unreadCount > 0,
         label: Text(
