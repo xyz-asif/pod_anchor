@@ -491,7 +491,7 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
     if (isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final publicPoems = poems.where((p) => p.visibility == 'public').toList();
+    final publicPoems = poems.where((p) => p.visibility == 'public' && !p.isRepost).toList();
     if (publicPoems.isEmpty) {
       return Center(
         child: Text(

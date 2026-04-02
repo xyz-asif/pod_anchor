@@ -251,11 +251,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     final countsAsync = ref.watch(ownFollowCountsProvider);
     final ownProfile = countsAsync.valueOrNull;
 
-    // Compute public poem count from loaded poems to exclude drafts.
+    // Compute public poem count from loaded poems to exclude drafts and reposts.
     // Falls back to user.postsCount (backend value) while poems are still loading.
     final poemsAsync = ref.watch(myPoemsControllerProvider);
     final publicPoemCount =
-        poemsAsync.valueOrNull?.where((p) => p.visibility == 'public').length ??
+        poemsAsync.valueOrNull?.where((p) => p.visibility == 'public' && !p.isRepost).length ??
         (user?.postsCount ?? 0);
 
     return Scaffold(
@@ -636,7 +636,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
     return poemsState.when(
       data: (allPoems) {
-        final poems = allPoems.where((p) => p.visibility == 'public').toList();
+        final poems = allPoems.where((p) => p.visibility == 'public' && !p.isRepost).toList();
         if (poems.isEmpty) {
           return Center(
             child: Column(

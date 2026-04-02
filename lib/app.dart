@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +24,8 @@ class MyApp extends ConsumerStatefulWidget {
 }
 
 class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
+  Timer? _disconnectTimer;
+
   @override
   void initState() {
     super.initState();
@@ -31,6 +34,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _disconnectTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -48,32 +52,43 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     switch (state) {
       case AppLifecycleState.paused:
-      case AppLifecycleState.hidden: // iOS-specific background state
-        // App is genuinely in background — notify server and close socket.
-        // Note: detached is intentionally excluded (can fire spuriously on Android).
-        wsService.disconnectAndNotifyServer();
+        // ── DEBOUNCE: Only disconnect if app stays backgrounded for 3s ──
+        // Android fires `paused` on transient events (notification shade,
+        // app switcher, permission dialogs, biometric prompt, share sheet).
+        // The 3-second delay lets these resolve without killing the socket.
+        _disconnectTimer?.cancel();
+        _disconnectTimer = Timer(const Duration(seconds: 3), () {
+          log('Disconnect timer fired — app still in background',
+              name: 'LIFECYCLE');
+          wsService.disconnectAndNotifyServer();
+        });
+        break;
+
+      case AppLifecycleState.hidden:
+        // On Android 13+, hidden fires AFTER paused. The timer from
+        // the paused case already covers it. Do nothing here.
         break;
 
       case AppLifecycleState.resumed:
+        // ── CANCEL any pending disconnect — user came back ──
+        _disconnectTimer?.cancel();
+        _disconnectTimer = null;
+
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
           try {
-            // ── Step 1: Refresh Firebase token ────────────────────────────
-            // Firebase tokens expire after 1 hour. If app was backgrounded
-            // longer than that, stored token is stale and WS server will
-            // reject it — causing a permanent disconnect until app restarts.
+            // Step 1: Refresh Firebase token (expires every 1 hour)
             final freshToken = await ref
                 .read(authControllerProvider.notifier)
                 .getAndRefreshToken();
 
             if (!mounted) return;
 
-            // Inject fresh token before reconnecting
             if (freshToken != null) {
               wsService.updateToken(freshToken);
             }
 
-            // ── Step 2: Reconnect WebSocket ────────────────────────────────
+            // Step 2: Reconnect WebSocket if needed
             final connected = await wsService.connectIfNeeded(
               timeout: const Duration(seconds: 8),
             );
@@ -81,11 +96,19 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             if (!mounted) return;
 
             if (connected) {
-              log('WS reconnected, syncing presence', name: 'LIFECYCLE');
+              log('WS connected on resume', name: 'LIFECYCLE');
+              // Send presence update in case we were already connected
+              // (connectIfNeeded returned true without reconnecting).
+              // If we just freshly reconnected, _doConnect's .ready callback
+              // already sent these — the duplicate is harmless (idempotent).
               wsService.sendPresenceStatus(true);
-              wsService.requestPresenceSync();
+              // DO NOT call requestPresenceSync() here.
+              // _doConnect sends it on fresh connections, and the 60s
+              // periodic timer handles ongoing sync. This eliminates
+              // the duplicate sync_presence calls visible in the logs.
             } else {
-              log('WS reconnect failed (will retry via backoff)', name: 'LIFECYCLE');
+              log('WS reconnect failed (will retry via backoff)',
+                  name: 'LIFECYCLE');
             }
 
             // ── Step 3: Refresh UI data ────────────────────────────────────

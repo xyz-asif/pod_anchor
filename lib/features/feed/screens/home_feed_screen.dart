@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/feed/controllers/feed_controller.dart';
 import 'package:chatbee/features/poems/widgets/poem_card.dart';
+import 'package:chatbee/features/poems/widgets/repost_card.dart';
 
 class HomeFeedScreen extends ConsumerStatefulWidget {
   const HomeFeedScreen({super.key});
@@ -150,7 +151,13 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen> {
                       key: PageStorageKey(_showAudioOnly ? 'audio_feed' : 'all_feed'),
                       controller: _activeController,
                       itemCount: poems.length,
-                      itemBuilder: (_, i) => PoemCard(poem: poems[i]),
+                      itemBuilder: (_, i) {
+                        final poem = poems[i];
+                        if (poem.isRepost) {
+                          return RepostCard(repost: poem);
+                        }
+                        return PoemCard(poem: poem);
+                      },
                     ),
                   );
                 },
