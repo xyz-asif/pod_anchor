@@ -393,7 +393,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
         spans.add(
           TextSpan(
             text: desc.substring(lastEnd, match.start),
-            style: TextStyle(fontSize: 13.sp, color: AppTheme.textMediumColor),
+            style: TextStyle(fontSize: 12.sp, color: AppTheme.textMediumColor),
           ),
         );
       }
@@ -403,7 +403,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
         TextSpan(
           text: '@$username',
           style: TextStyle(
-            fontSize: 13.sp,
+            fontSize: 12.sp,
             color: AppTheme.primaryColor,
             fontWeight: FontWeight.w600,
           ),
@@ -426,7 +426,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
       spans.add(
         TextSpan(
           text: desc.substring(lastEnd),
-          style: TextStyle(fontSize: 13.sp, color: AppTheme.textMediumColor),
+          style: TextStyle(fontSize: 12.sp, color: AppTheme.textMediumColor),
         ),
       );
     }
@@ -446,7 +446,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                   (tag) => Text(
                     '#$tag',
                     style: TextStyle(
-                      fontSize: 13.sp,
+                      fontSize: 12.sp,
                       fontWeight: FontWeight.w500,
                       color: AppTheme.primaryColor.withValues(alpha: 0.3),
                     ),

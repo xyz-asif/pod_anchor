@@ -55,11 +55,30 @@ class RepostCard extends StatelessWidget {
         if (original != null)
           PoemCard(poem: original)
         else
-          Padding(
+          Container(
+            margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
             padding: EdgeInsets.all(16.w),
-            child: Text(
-              'Original poem unavailable',
-              style: TextStyle(fontSize: 13.sp, color: AppTheme.textLightColor, fontStyle: FontStyle.italic),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceColor,
+              borderRadius: BorderRadius.circular(16.r),
+              border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.6)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                'Original poem unavailable',
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: AppTheme.textLightColor,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
           ),
 

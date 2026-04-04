@@ -12,6 +12,7 @@ import 'package:chatbee/features/profile/screens/profile_edit_screen.dart';
 import 'package:chatbee/features/profile/screens/profile_setup_screen.dart';
 import 'package:chatbee/features/profile/screens/username_setup_screen.dart';
 import 'package:chatbee/features/profile/screens/follow_list_screen.dart';
+import 'package:chatbee/features/profile/screens/settings_screen.dart';
 import 'package:chatbee/features/feed/screens/explore_screen.dart';
 import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/poems/screens/my_poems_screen.dart';
@@ -100,6 +101,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile/edit',
         builder: (context, state) => const ProfileEditScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/profile/:id',

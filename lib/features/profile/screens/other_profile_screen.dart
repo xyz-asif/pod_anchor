@@ -394,7 +394,6 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
                     Tab(text: 'Reposts'),
                   ],
                 ),
-                topPadding: MediaQuery.of(context).padding.top,
               ),
             ),
           ],
@@ -535,14 +534,13 @@ class _OtherProfileScreenState extends ConsumerState<OtherProfileScreen>
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
-  final double topPadding;
 
-  _TabBarDelegate(this.tabBar, {this.topPadding = 0});
+  _TabBarDelegate(this.tabBar);
 
   @override
-  double get minExtent => tabBar.preferredSize.height + topPadding;
+  double get minExtent => tabBar.preferredSize.height;
   @override
-  double get maxExtent => tabBar.preferredSize.height + topPadding;
+  double get maxExtent => tabBar.preferredSize.height;
 
   @override
   Widget build(
@@ -550,16 +548,12 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(
-      color: AppTheme.surfaceColor,
-      padding: EdgeInsets.only(top: topPadding),
-      child: tabBar,
-    );
+    return Container(color: AppTheme.surfaceColor, child: tabBar);
   }
 
   @override
   bool shouldRebuild(_TabBarDelegate oldDelegate) {
-    return oldDelegate.topPadding != topPadding || oldDelegate.tabBar != tabBar;
+    return oldDelegate.tabBar != tabBar;
   }
 }
 

@@ -177,58 +177,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     }
   }
 
-  Future<void> _showLogoutConfirmation() async {
-    HapticFeedback.mediumImpact();
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.r),
-        ),
-        title: Text(
-          'Logout',
-          style: TextStyle(
-            fontSize: 20.sp,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textDarkColor,
-          ),
-        ),
-        content: Text(
-          'Are you sure you want to sign out?',
-          style: TextStyle(fontSize: 16.sp, color: AppTheme.textMediumColor),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textMediumColor,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Logout',
-              style: TextStyle(
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w700,
-                color: Colors.red,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      ref.read(authControllerProvider.notifier).signOut();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -344,10 +292,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                               children: [
                                 IconButton(
                                   icon: const Icon(
-                                    Icons.logout_rounded,
+                                    Icons.settings_outlined,
                                     color: Colors.white,
                                   ),
-                                  onPressed: _showLogoutConfirmation,
+                                  onPressed: () {
+                                    HapticFeedback.selectionClick();
+                                    context.push('/settings');
+                                  },
                                 ),
                                 Expanded(
                                   child: Center(
@@ -615,7 +566,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                         Tab(text: 'Drafts'),
                       ],
                     ),
-                    topPadding: MediaQuery.of(context).padding.top,
                   ),
                 ),
               ],
@@ -855,14 +805,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
-  final double topPadding;
 
-  _SliverAppBarDelegate(this.tabBar, {this.topPadding = 0});
+  _SliverAppBarDelegate(this.tabBar);
 
   @override
-  double get minExtent => tabBar.preferredSize.height + topPadding;
+  double get minExtent => tabBar.preferredSize.height;
   @override
-  double get maxExtent => tabBar.preferredSize.height + topPadding;
+  double get maxExtent => tabBar.preferredSize.height;
 
   @override
   Widget build(
@@ -870,16 +819,12 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(
-      color: AppTheme.surfaceColor,
-      padding: EdgeInsets.only(top: topPadding),
-      child: tabBar,
-    );
+    return Container(color: AppTheme.surfaceColor, child: tabBar);
   }
 
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return oldDelegate.topPadding != topPadding || oldDelegate.tabBar != tabBar;
+    return oldDelegate.tabBar != tabBar;
   }
 }
 
