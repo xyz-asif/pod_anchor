@@ -14,9 +14,9 @@ class ProfileController extends _$ProfileController {
   @override
   FutureOr<UserModel?> build() => null;
 
-  /// Load profile from backend.
+  /// Load profile from backend. Does not set loading state first so callers
+  /// like pull-to-refresh don't trigger a second spinner.
   Future<void> loadProfile() async {
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(
       () => ref.read(userRepoProvider).getMyProfile(),
     );

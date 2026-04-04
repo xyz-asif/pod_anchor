@@ -101,92 +101,116 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           ),
         ],
       ),
-      body: roomsState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                e.toString(),
-                style: TextStyle(fontSize: 14.sp, color: Colors.red),
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(chatListControllerProvider.notifier).refresh(),
+        child: roomsState.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: constraints.maxHeight,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        e.toString(),
+                        style: TextStyle(fontSize: 14.sp, color: Colors.red),
+                      ),
+                      SizedBox(height: 8.h),
+                      TextButton(
+                        onPressed: () =>
+                            ref.read(chatListControllerProvider.notifier).refresh(),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              SizedBox(height: 8.h),
-              TextButton(
-                onPressed: () =>
-                    ref.read(chatListControllerProvider.notifier).refresh(),
-                child: const Text('Retry'),
-              ),
-            ],
+            ),
           ),
-        ),
-        data: (allRooms) {
-          final currentUserId = ref
-              .read(authControllerProvider)
-              .valueOrNull
-              ?.id;
+          data: (allRooms) {
+            final currentUserId = ref
+                .read(authControllerProvider)
+                .valueOrNull
+                ?.id;
 
-          final rooms = allRooms;
+            final rooms = allRooms;
 
-          if (rooms.isEmpty && _searchQuery.isNotEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.search_off_rounded,
-                    size: 64.r,
-                    color: AppTheme.textLightColor,
-                  ),
-                  SizedBox(height: 12.h),
-                  Text(
-                    'No chats found',
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      color: AppTheme.textMediumColor,
+            if (rooms.isEmpty && _searchQuery.isNotEmpty) {
+              return LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.search_off_rounded,
+                            size: 64.r,
+                            color: AppTheme.textLightColor,
+                          ),
+                          SizedBox(height: 12.h),
+                          Text(
+                            'No chats found',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              color: AppTheme.textMediumColor,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
-            );
-          }
+                ),
+              );
+            }
 
-          if (rooms.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    size: 64.r,
-                    color: AppTheme.textLightColor,
-                  ),
-                  SizedBox(height: 12.h),
-                  Text(
-                    'No chats yet',
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      color: AppTheme.textMediumColor,
+            if (rooms.isEmpty) {
+              return LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            size: 64.r,
+                            color: AppTheme.textLightColor,
+                          ),
+                          SizedBox(height: 12.h),
+                          Text(
+                            'No chats yet',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              color: AppTheme.textMediumColor,
+                            ),
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            'Add friends to start chatting',
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              color: AppTheme.textLightColor,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    'Add friends to start chatting',
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      color: AppTheme.textLightColor,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
+                ),
+              );
+            }
 
 
-          return RefreshIndicator(
-            onRefresh: () =>
-                ref.read(chatListControllerProvider.notifier).refresh(),
-            child: ListView.separated(
+            return ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
               controller: _scrollController,
               itemCount: rooms.length,
               separatorBuilder: (_, __) =>
@@ -388,21 +412,13 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
                       // Wait for user to return from the chat screen
                       await context.push('/chat/${room.id}');
-
-                      // When back on this screen, ensure unread count is zeroed out
-                      // (in case messages arrived while they were reading)
-                      if (context.mounted) {
-                        ref
-                            .read(chatListControllerProvider.notifier)
-                            .clearUnreadCount(room.id);
-                      }
                     },
                   ),
                 );
               },
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

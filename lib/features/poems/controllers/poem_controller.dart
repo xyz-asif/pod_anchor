@@ -20,7 +20,6 @@ class MyPoemsController extends _$MyPoemsController {
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final page = await ref.read(poemRepoProvider).getMyPoems(limit: 20);
       _hasMore = page.hasMore;

@@ -8,6 +8,7 @@ import 'package:chatbee/config/theme/app_theme.dart';
 import 'package:chatbee/features/notifications/controllers/notification_controller.dart';
 import 'package:chatbee/features/notifications/models/notification_model.dart';
 import 'package:chatbee/features/notifications/utils/notification_navigator.dart';
+import 'package:go_router/go_router.dart';
 
 class NotificationScreen extends ConsumerStatefulWidget {
   const NotificationScreen({super.key});
@@ -65,38 +66,55 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
           ),
         ],
       ),
-      body: notifState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(e.toString(), style: TextStyle(fontSize: 14.sp, color: Colors.red)),
-              SizedBox(height: 8.h),
-              TextButton(
-                onPressed: () => ref.read(notificationControllerProvider.notifier).refresh(),
-                child: const Text('Retry'),
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(notificationControllerProvider.notifier).refresh(),
+        child: notifState.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: constraints.maxHeight,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(e.toString(), style: TextStyle(fontSize: 14.sp, color: Colors.red)),
+                      SizedBox(height: 8.h),
+                      TextButton(
+                        onPressed: () => ref.read(notificationControllerProvider.notifier).refresh(),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
+            ),
           ),
-        ),
-        data: (notifications) {
-          if (notifications.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.notifications_none_rounded, size: 64.r, color: AppTheme.textLightColor),
-                  SizedBox(height: 12.h),
-                  Text('No notifications yet', style: TextStyle(fontSize: 16.sp, color: AppTheme.textMediumColor)),
-                ],
-              ),
-            );
-          }
+          data: (notifications) {
+            if (notifications.isEmpty) {
+              return LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.notifications_none_rounded, size: 64.r, color: AppTheme.textLightColor),
+                          SizedBox(height: 12.h),
+                          Text('No notifications yet', style: TextStyle(fontSize: 16.sp, color: AppTheme.textMediumColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
 
-          return RefreshIndicator(
-            onRefresh: () => ref.read(notificationControllerProvider.notifier).refresh(),
-            child: ListView.separated(
+            return ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
               controller: _scrollController,
               itemCount: notifications.length,
               separatorBuilder: (_, __) => Divider(height: 1, indent: 72.w, color: AppTheme.borderColor),
@@ -113,11 +131,12 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
                     // Navigate based on resourceType
                     navigateToNotification(context, notif.resourceType, notif.resourceId);
                   },
+                  onActorTap: () => context.push('/profile/${notif.actorId}'),
                 );
               },
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -126,10 +145,12 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
 class _NotificationTile extends StatelessWidget {
   final NotificationModel notification;
   final VoidCallback onTap;
+  final VoidCallback onActorTap;
 
   const _NotificationTile({
     required this.notification,
     required this.onTap,
+    required this.onActorTap,
   });
 
   IconData _iconForType(String type) {
@@ -173,39 +194,42 @@ class _NotificationTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Actor avatar
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 24.r,
-                  backgroundColor: AppTheme.primaryLight,
-                  backgroundImage: notification.actorPhotoUrl != null
-                      ? CachedNetworkImageProvider(notification.actorPhotoUrl!)
-                      : null,
-                  child: notification.actorPhotoUrl == null
-                      ? Icon(_iconForType(notification.type), size: 20.r, color: AppTheme.primaryColor)
-                      : null,
-                ),
-                // Type badge
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    width: 18.r,
-                    height: 18.r,
-                    decoration: BoxDecoration(
-                      color: _colorForType(notification.type),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.surfaceColor, width: 2),
-                    ),
-                    child: Icon(
-                      _iconForType(notification.type),
-                      size: 10.r,
-                      color: Colors.white,
+            // Actor avatar — tappable to view their profile
+            GestureDetector(
+              onTap: onActorTap,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 24.r,
+                    backgroundColor: AppTheme.primaryLight,
+                    backgroundImage: notification.actorPhotoUrl != null
+                        ? CachedNetworkImageProvider(notification.actorPhotoUrl!)
+                        : null,
+                    child: notification.actorPhotoUrl == null
+                        ? Icon(_iconForType(notification.type), size: 20.r, color: AppTheme.primaryColor)
+                        : null,
+                  ),
+                  // Type badge
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      width: 18.r,
+                      height: 18.r,
+                      decoration: BoxDecoration(
+                        color: _colorForType(notification.type),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppTheme.surfaceColor, width: 2),
+                      ),
+                      child: Icon(
+                        _iconForType(notification.type),
+                        size: 10.r,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             SizedBox(width: 12.w),
             // Content

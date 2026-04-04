@@ -48,6 +48,13 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen> {
     }
   }
 
+  Future<void> _refresh() {
+    if (_showAudioOnly) {
+      return ref.read(audioFeedControllerProvider.notifier).refresh();
+    }
+    return ref.read(homeFeedControllerProvider.notifier).refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -93,61 +100,74 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen> {
                   ? ref.watch(audioFeedControllerProvider)
                   : ref.watch(homeFeedControllerProvider);
                   
-              return state.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(e.toString(),
-                          style: TextStyle(color: Colors.red, fontSize: 14.sp)),
-                      TextButton(
-                        onPressed: () => _showAudioOnly 
-                            ? ref.read(audioFeedControllerProvider.notifier).refresh()
-                            : ref.read(homeFeedControllerProvider.notifier).refresh(),
-                        child: const Text('Retry'),
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: state.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => LayoutBuilder(
+                    builder: (context, constraints) => SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: constraints.maxHeight,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(e.toString(),
+                                  style: TextStyle(color: Colors.red, fontSize: 14.sp)),
+                              TextButton(
+                                onPressed: _refresh,
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                data: (poems) {
-                  if (poems.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.auto_stories_rounded,
-                              size: 64.r, color: AppTheme.textLightColor),
-                          SizedBox(height: 12.h),
-                          Text(_showAudioOnly ? 'No audio poems in your feed' : 'No poems yet',
-                              style: TextStyle(
-                                  fontSize: 16.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor)),
-                          SizedBox(height: 4.h),
-                          Text(_showAudioOnly
-                              ? 'Follow poets who record audio, or create your own'
-                              : 'Follow poets to see their work here',
-                              style: TextStyle(
-                                  fontSize: 13.sp, color: AppTheme.textMediumColor)),
-                          SizedBox(height: 16.h),
-                          FilledButton.icon(
-                            onPressed: () => context.go('/explore'),
-                            icon: const Icon(Icons.explore_rounded),
-                            label: const Text('Explore Poems'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              foregroundColor: Colors.white,
+                  data: (poems) {
+                    if (poems.isEmpty) {
+                      return LayoutBuilder(
+                        builder: (context, constraints) => SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: constraints.maxHeight,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.auto_stories_rounded,
+                                      size: 64.r, color: AppTheme.textLightColor),
+                                  SizedBox(height: 12.h),
+                                  Text(_showAudioOnly ? 'No audio poems in your feed' : 'No poems yet',
+                                      style: TextStyle(
+                                          fontSize: 16.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor)),
+                                  SizedBox(height: 4.h),
+                                  Text(_showAudioOnly
+                                      ? 'Follow poets who record audio, or create your own'
+                                      : 'Follow poets to see their work here',
+                                      style: TextStyle(
+                                          fontSize: 13.sp, color: AppTheme.textMediumColor)),
+                                  SizedBox(height: 16.h),
+                                  FilledButton.icon(
+                                    onPressed: () => context.go('/explore'),
+                                    icon: const Icon(Icons.explore_rounded),
+                                    label: const Text('Explore Poems'),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryColor,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    );
-                  }
+                        ),
+                      );
+                    }
 
-                  return RefreshIndicator(
-                    onRefresh: () async => _showAudioOnly 
-                        ? ref.read(audioFeedControllerProvider.notifier).refresh()
-                        : ref.read(homeFeedControllerProvider.notifier).refresh(),
-                    child: ListView.builder(
+                    return ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       key: PageStorageKey(_showAudioOnly ? 'audio_feed' : 'all_feed'),
                       controller: _activeController,
                       itemCount: poems.length,
@@ -158,9 +178,9 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen> {
                         }
                         return PoemCard(poem: poem);
                       },
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               );
             }),
           ),

@@ -182,6 +182,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen>
     }
   }
 
+  Future<void> _refresh() {
+    if (_showAudioOnly) {
+      return ref.read(audioFeedControllerProvider.notifier).refresh();
+    }
+    return ref.read(exploreFeedControllerProvider.notifier).refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -311,43 +318,56 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen>
                 ? ref.watch(audioFeedControllerProvider)
                 : ref.watch(exploreFeedControllerProvider);
                 
-            return currentState.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: TextButton(
-                  onPressed: () => _showAudioOnly 
-                      ? ref.read(audioFeedControllerProvider.notifier).refresh()
-                      : ref.read(exploreFeedControllerProvider.notifier).refresh(),
-                  child: const Text('Retry'),
-                ),
-              ),
-              data: (poems) {
-                if (poems.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.explore_off_rounded, size: 60.r, color: AppTheme.textLightColor),
-                        SizedBox(height: 12.h),
-                        Text('No poems found', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor)),
-                        SizedBox(height: 4.h),
-                        Text('Try expanding your search or selecting "All"', style: TextStyle(fontSize: 13.sp, color: AppTheme.textMediumColor)),
-                      ],
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: currentState.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: constraints.maxHeight,
+                      child: Center(
+                        child: TextButton(
+                          onPressed: _refresh,
+                          child: const Text('Retry'),
+                        ),
+                      ),
                     ),
-                  );
-                }
-                return RefreshIndicator(
-                  onRefresh: () async => _showAudioOnly 
-                      ? ref.read(audioFeedControllerProvider.notifier).refresh()
-                      : ref.read(exploreFeedControllerProvider.notifier).refresh(),
-                  child: ListView.builder(
+                  ),
+                ),
+                data: (poems) {
+                  if (poems.isEmpty) {
+                    return LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: constraints.maxHeight,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.explore_off_rounded, size: 60.r, color: AppTheme.textLightColor),
+                                SizedBox(height: 12.h),
+                                Text('No poems found', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600, color: AppTheme.textDarkColor)),
+                                SizedBox(height: 4.h),
+                                Text('Try expanding your search or selecting "All"', style: TextStyle(fontSize: 13.sp, color: AppTheme.textMediumColor)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     key: PageStorageKey(_showAudioOnly ? 'explore_audio_feed' : 'explore_all_feed'),
                     controller: _activeFeedController,
                     itemCount: poems.length,
                     itemBuilder: (_, i) => PoemCard(poem: poems[i]),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             );
           }),
         ),

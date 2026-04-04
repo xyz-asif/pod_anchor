@@ -123,7 +123,7 @@ class SettingsScreen extends ConsumerWidget {
                 iconColor: AppTheme.textMediumColor,
                 label: 'App Version',
                 trailing: Text(
-                  '1.0.0',
+                  '1.0.2',
                   style: TextStyle(
                     fontSize: 14.sp,
                     color: AppTheme.textMediumColor,
@@ -223,9 +223,7 @@ class _SettingsGroup extends StatelessWidget {
         borderRadius: BorderRadius.circular(14.r),
         border: Border.all(color: AppTheme.borderColor),
       ),
-      child: Column(
-        children: children,
-      ),
+      child: Column(children: children),
     );
   }
 }
@@ -376,7 +374,11 @@ class _ConfirmDialog extends StatelessWidget {
       ),
       content: Text(
         message,
-        style: TextStyle(fontSize: 14.sp, color: AppTheme.textMediumColor, height: 1.5),
+        style: TextStyle(
+          fontSize: 14.sp,
+          color: AppTheme.textMediumColor,
+          height: 1.5,
+        ),
       ),
       actions: [
         TextButton(

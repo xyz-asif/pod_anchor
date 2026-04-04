@@ -77,7 +77,6 @@ class ChatListController extends _$ChatListController {
     if (_isDisposed) return;
     _currentOffset = 0;
     _searchQuery = '';
-    state = const AsyncValue.loading();
     if (_isDisposed) return;
     state = await AsyncValue.guard(() async {
       final (rooms, hasMore, _) = await ref

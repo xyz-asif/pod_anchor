@@ -73,6 +73,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     }
   }
 
+  /// Full profile refresh — reloads all APIs: profile, poems, follow counts.
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      ref.read(profileControllerProvider.notifier).loadProfile(),
+      ref.read(myPoemsControllerProvider.notifier).refresh(),
+    ]);
+    ref.invalidate(ownFollowCountsProvider);
+  }
+
+  /// Reposts tab refresh — resets local list and re-fetches alongside profile data.
+  Future<void> _refreshReposts() async {
+    if (mounted) setState(() { _reposts = []; _isLoadingReposts = true; });
+    await Future.wait([
+      _loadReposts(),
+      ref.read(profileControllerProvider.notifier).loadProfile(),
+      ref.read(myPoemsControllerProvider.notifier).refresh(),
+    ]);
+    ref.invalidate(ownFollowCountsProvider);
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -584,59 +604,87 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   Widget _buildPoemsTab() {
     final poemsState = ref.watch(myPoemsControllerProvider);
 
-    return poemsState.when(
-      data: (allPoems) {
-        final poems = allPoems.where((p) => p.visibility == 'public' && !p.isRepost).toList();
-        if (poems.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+    return RefreshIndicator(
+      color: AppTheme.primaryColor,
+      notificationPredicate: (n) => true,
+      onRefresh: _refreshAll,
+      child: poemsState.when(
+        data: (allPoems) {
+          final poems = allPoems.where((p) => p.visibility == 'public' && !p.isRepost).toList();
+          if (poems.isEmpty) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                Icon(
-                  Icons.edit_note_rounded,
-                  size: 64.r,
-                  color: AppTheme.textLightColor,
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  'No poems yet',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    color: AppTheme.textMediumColor,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Start writing your first poem!',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: AppTheme.textLightColor,
+                SizedBox(
+                  height: 400.h,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.edit_note_rounded,
+                        size: 64.r,
+                        color: AppTheme.textLightColor,
+                      ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        'No poems yet',
+                        style: TextStyle(
+                          fontSize: 18.sp,
+                          color: AppTheme.textMediumColor,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Text(
+                        'Start writing your first poem!',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: AppTheme.textLightColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-          );
-        }
+            );
+          }
 
-        return GridView.builder(
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12.w,
-            mainAxisSpacing: 12.h,
-            childAspectRatio: 0.65,
-          ),
-          itemCount: poems.length,
-          itemBuilder: (context, index) {
-            return PoemGridCard(poem: poems[index]);
-          },
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(
-        child: Text(
-          'Error loading poems: $error',
-          style: TextStyle(color: AppTheme.errorColor),
+          return GridView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12.w,
+              mainAxisSpacing: 12.h,
+              childAspectRatio: 0.65,
+            ),
+            itemCount: poems.length,
+            itemBuilder: (context, index) {
+              return PoemGridCard(poem: poems[index]);
+            },
+          );
+        },
+        loading: () => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 400.h,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
+        error: (error, stack) => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 400.h,
+              child: Center(
+                child: Text(
+                  'Error loading poems: $error',
+                  style: TextStyle(color: AppTheme.errorColor),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -644,25 +692,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   Widget _buildRepostsTab() {
     if (_isLoadingReposts) {
-      return const Center(child: CircularProgressIndicator());
+      return RefreshIndicator(
+        color: AppTheme.primaryColor,
+        onRefresh: _refreshReposts,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 400.h,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
+      );
     }
 
     if (_reposts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return RefreshIndicator(
+        color: AppTheme.primaryColor,
+        onRefresh: _refreshReposts,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            Icon(
-              Icons.repeat_rounded,
-              size: 64.r,
-              color: AppTheme.textLightColor,
-            ),
-            SizedBox(height: 16.h),
-            Text(
-              'No reposts yet',
-              style: TextStyle(
-                fontSize: 18.sp,
-                color: AppTheme.textMediumColor,
+            SizedBox(
+              height: 400.h,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.repeat_rounded,
+                    size: 64.r,
+                    color: AppTheme.textLightColor,
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'No reposts yet',
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      color: AppTheme.textMediumColor,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -670,59 +740,76 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       );
     }
 
-    return ListView.builder(
-      padding: EdgeInsets.symmetric(vertical: 8.h),
-      itemCount: _reposts.length,
-      itemBuilder: (context, index) {
-        return RepostCard(repost: _reposts[index]);
-      },
+    return RefreshIndicator(
+      color: AppTheme.primaryColor,
+      notificationPredicate: (n) => true,
+      onRefresh: _refreshReposts,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.symmetric(vertical: 8.h),
+        itemCount: _reposts.length,
+        itemBuilder: (context, index) {
+          return RepostCard(repost: _reposts[index]);
+        },
+      ),
     );
   }
 
   Widget _buildDraftsTab() {
     final poemsState = ref.watch(myPoemsControllerProvider);
 
-    return poemsState.when(
-      data: (poems) {
-        // Filter for private (draft) poems
-        final drafts = poems
-            .where((poem) => poem.visibility == 'private')
-            .toList();
+    return RefreshIndicator(
+      color: AppTheme.primaryColor,
+      notificationPredicate: (n) => true,
+      onRefresh: _refreshAll,
+      child: poemsState.when(
+        data: (poems) {
+          // Filter for private (draft) poems
+          final drafts = poems
+              .where((poem) => poem.visibility == 'private')
+              .toList();
 
-        if (drafts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          if (drafts.isEmpty) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
-                Icon(
-                  Icons.edit_document,
-                  size: 64.r,
-                  color: AppTheme.textLightColor,
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  'No drafts',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    color: AppTheme.textMediumColor,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Your draft poems will appear here',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: AppTheme.textLightColor,
+                SizedBox(
+                  height: 400.h,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.edit_document,
+                        size: 64.r,
+                        color: AppTheme.textLightColor,
+                      ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        'No drafts',
+                        style: TextStyle(
+                          fontSize: 18.sp,
+                          color: AppTheme.textMediumColor,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Text(
+                        'Your draft poems will appear here',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: AppTheme.textLightColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-          );
-        }
+            );
+          }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(16.w),
-          itemCount: drafts.length,
+          return ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.all(16.w),
+            itemCount: drafts.length,
           itemBuilder: (context, index) {
             final poem = drafts[index];
             return GestureDetector(
@@ -792,11 +879,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           },
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(
-        child: Text(
-          'Error loading drafts: $error',
-          style: TextStyle(color: AppTheme.errorColor),
+        loading: () => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 400.h,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
+        error: (error, stack) => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 400.h,
+              child: Center(
+                child: Text(
+                  'Error loading drafts: $error',
+                  style: TextStyle(color: AppTheme.errorColor),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

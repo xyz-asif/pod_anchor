@@ -44,7 +44,6 @@ class HomeFeedController extends _$HomeFeedController with FeedControllerMixin {
 
   Future<void> refresh() async {
     _currentCursor = null;
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final page = await ref
           .read(feedRepoProvider)
@@ -132,7 +131,6 @@ class ExploreFeedController extends _$ExploreFeedController with FeedControllerM
   Future<void> refresh() async {
     _activeHashtag = '';
     _currentOffset = 0;
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final page = await ref
           .read(feedRepoProvider)
@@ -220,7 +218,6 @@ class AudioFeedController extends _$AudioFeedController with FeedControllerMixin
   Future<void> refresh() async {
     _activeHashtag = '';
     _currentOffset = 0;
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final page = await ref
           .read(feedRepoProvider)

@@ -339,6 +339,14 @@ void _handleRoomUpdated(Ref ref, WsEvent event) {
   }
 
   try {
+    // Only process room_updated for self-sent messages.
+    // Incoming messages from others are handled by _handleNewMessage (which also sets the unread badge).
+    final currentUserId = ref.read(authControllerProvider).valueOrNull?.id;
+    if (currentUserId != null && lastSenderId != currentUserId) {
+      log('[WS_DEBUG] _handleRoomUpdated: Skipping for incoming message (handled by _handleNewMessage). Sender: $lastSenderId', name: 'WS');
+      return;
+    }
+
     final lastUpdated = DateTime.parse(lastUpdatedStr);
     if (ref.exists(chatListControllerProvider)) {
       ref
