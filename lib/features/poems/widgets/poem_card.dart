@@ -40,14 +40,19 @@ class PoemCard extends ConsumerStatefulWidget {
 }
 
 class _PoemCardState extends ConsumerState<PoemCard> {
-  // Optimistic UI state — mirrors widget.poem but allows instant feedback
+  // Optimistic UI state
   late bool _isLiked;
   late int _likeCount;
   late bool _isReposted;
   late int _repostCount;
+  // FIX #8: Track comment count locally for optimistic updates
+  late int _commentCount;
   bool _isLikeLoading = false;
   bool _isRepostLoading = false;
   late QuillController _quillController;
+
+  // FIX #3: Manage TapGestureRecognizers properly to prevent memory leaks
+  List<TapGestureRecognizer> _mentionRecognizers = [];
 
   // Audio seekbar state
   AudioPlayer? _audioPlayer;
@@ -66,8 +71,10 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     _likeCount = widget.poem.likesCount;
     _isReposted = widget.poem.isRepostedByMe;
     _repostCount = widget.poem.repostsCount;
+    _commentCount = widget.poem.commentsCount;
 
     _initQuillController();
+    _buildMentionRecognizers();
   }
 
   void _initQuillController() {
@@ -80,22 +87,26 @@ class _PoemCardState extends ConsumerState<PoemCard> {
       String text = doc.toPlainText();
       int trimCount = 0;
       for (int i = text.length - 1; i >= 0; i--) {
-        if (text[i] == '\n')
+        if (text[i] == '\n') {
           trimCount++;
-        else
+        } else {
           break;
+        }
       }
       if (trimCount > 1) {
         doc.delete(doc.length - trimCount, trimCount - 1);
       }
 
       // Apply backwards-compatibility global alignment
-      final attr = widget.poem.textAlign == 'center'
-          ? Attribute.centerAlignment
-          : (widget.poem.textAlign == 'right'
-                ? Attribute.rightAlignment
-                : Attribute.leftAlignment);
-      doc.format(0, doc.length, attr);
+      // FIX #16: Guard against empty document
+      if (doc.length > 0) {
+        final attr = widget.poem.textAlign == 'center'
+            ? Attribute.centerAlignment
+            : (widget.poem.textAlign == 'right'
+                  ? Attribute.rightAlignment
+                  : Attribute.leftAlignment);
+        doc.format(0, doc.length, attr);
+      }
 
       _quillController = QuillController(
         document: doc,
@@ -107,11 +118,44 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     }
   }
 
+  /// FIX #3: Build TapGestureRecognizers once, dispose them properly.
+  void _buildMentionRecognizers() {
+    // Dispose old recognizers first
+    for (final r in _mentionRecognizers) {
+      r.dispose();
+    }
+    _mentionRecognizers = [];
+
+    final desc = widget.poem.description;
+    if (desc.isEmpty) return;
+
+    final mentionRegex = RegExp(r'@([a-zA-Z0-9_\-]+)');
+    for (final match in mentionRegex.allMatches(desc)) {
+      final username = match.group(1)!;
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () {
+          final mentioned = widget.poem.mentions
+              .where((m) => m.username == username)
+              .firstOrNull;
+          if (mentioned != null) {
+            context.push('/profile/${mentioned.id}');
+          }
+        };
+      _mentionRecognizers.add(recognizer);
+    }
+  }
+
   @override
   void dispose() {
+    // FIX #3: Dispose all TapGestureRecognizers
+    for (final r in _mentionRecognizers) {
+      r.dispose();
+    }
+    // FIX #14: Cancel all audio subscriptions and stop player
     _audioStateSub?.cancel();
     _audioPositionSub?.cancel();
     _audioDurationSub?.cancel();
+    _audioPlayer?.stop();
     _audioPlayer?.dispose();
     _quillController.dispose();
     super.dispose();
@@ -145,9 +189,19 @@ class _PoemCardState extends ConsumerState<PoemCard> {
         _repostCount = widget.poem.repostsCount;
       }
     }
+    // FIX #8: Sync comment count from upstream
+    if (oldWidget.poem.commentsCount != widget.poem.commentsCount) {
+      _commentCount = widget.poem.commentsCount;
+    }
 
+    // FIX #14: Full audio cleanup when poem ID changes
     if (oldWidget.poem.id != widget.poem.id) {
+      _audioStateSub?.cancel();
+      _audioPositionSub?.cancel();
+      _audioDurationSub?.cancel();
       _audioPlayer?.stop();
+      _audioPlayer?.dispose();
+      _audioPlayer = null;
       _isPlayingAudio = false;
       _isLoadingAudio = false;
       _audioPosition = Duration.zero;
@@ -158,6 +212,12 @@ class _PoemCardState extends ConsumerState<PoemCard> {
         oldWidget.poem.contentJson != widget.poem.contentJson) {
       _quillController.dispose();
       _initQuillController();
+    }
+
+    // FIX #3: Rebuild mention recognizers when poem data changes
+    if (oldWidget.poem.id != widget.poem.id ||
+        oldWidget.poem.description != widget.poem.description) {
+      _buildMentionRecognizers();
     }
   }
 
@@ -198,11 +258,12 @@ class _PoemCardState extends ConsumerState<PoemCard> {
         AudioSource.uri(Uri.parse(widget.poem.audioUrl)),
       );
       _audioPlayer!.play();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isPlayingAudio = true;
           _isLoadingAudio = false;
         });
+      }
 
       _audioStateSub?.cancel();
       _audioStateSub = _audioPlayer!.playerStateStream.listen((s) {
@@ -301,14 +362,23 @@ class _PoemCardState extends ConsumerState<PoemCard> {
     }
   }
 
+  // FIX #8: Comments sheet now returns whether a comment was posted,
+  // and we optimistically increment the count.
   void _showComments(BuildContext context) {
     HapticFeedback.selectionClick();
-    showModalBottomSheet(
+    showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => CommentBottomSheet(poemId: widget.poem.id, poemAuthorId: widget.poem.author.id),
-    );
+      builder: (_) => CommentBottomSheet(
+        poemId: widget.poem.id,
+        poemAuthorId: widget.poem.author.id,
+      ),
+    ).then((commentPosted) {
+      if (commentPosted == true && mounted) {
+        setState(() => _commentCount++);
+      }
+    });
   }
 
   // ── 3-dot menu ──
@@ -377,15 +447,16 @@ class _PoemCardState extends ConsumerState<PoemCard> {
   }
 
   // ── Description with tappable @mentions ──
+  // FIX #3: Uses pre-built recognizers instead of creating new ones each build
 
   Widget _buildDescription() {
     final desc = widget.poem.description;
     if (desc.isEmpty) return const SizedBox.shrink();
 
-    // Parse @mentions from text
     final mentionRegex = RegExp(r'@([a-zA-Z0-9_\-]+)');
     final spans = <InlineSpan>[];
     int lastEnd = 0;
+    int recognizerIndex = 0;
 
     for (final match in mentionRegex.allMatches(desc)) {
       // Add text before this mention
@@ -397,7 +468,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
           ),
         );
       }
-      // Add the mention itself
+      // Add the mention itself with pre-built recognizer
       final username = match.group(1)!;
       spans.add(
         TextSpan(
@@ -407,18 +478,12 @@ class _PoemCardState extends ConsumerState<PoemCard> {
             color: AppTheme.primaryColor,
             fontWeight: FontWeight.w600,
           ),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () {
-              // Try to resolve userId from mentions list
-              final mentioned = widget.poem.mentions
-                  .where((m) => m.username == username)
-                  .firstOrNull;
-              if (mentioned != null) {
-                context.push('/profile/${mentioned.id}');
-              }
-            },
+          recognizer: recognizerIndex < _mentionRecognizers.length
+              ? _mentionRecognizers[recognizerIndex]
+              : null,
         ),
       );
+      recognizerIndex++;
       lastEnd = match.end;
     }
     // Remaining text
@@ -436,7 +501,6 @@ class _PoemCardState extends ConsumerState<PoemCard> {
       children: [
         SizedBox(height: 8.h),
         if (widget.poem.hashtags.isNotEmpty) ...[
-          // SizedBox(height: 12.h),
           Wrap(
             spacing: 8.w,
             runSpacing: 4.h,
@@ -727,7 +791,6 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                       fontFamily: 'JosefinSans',
                       fontSize: 15.sp,
                       color: AppTheme.textDarkColor.withValues(alpha: 0.85),
-                      // color: AppTheme.textDarkColor.withValues(alpha: 0.8),
                       height: 1.2,
                       letterSpacing: 0.1,
                     ),
@@ -759,28 +822,6 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                 ),
               ),
             ),
-
-          // ── Hashtags ──
-          // if (widget.poem.hashtags.isNotEmpty) ...[
-          //   SizedBox(height: 12.h),
-          //   Wrap(
-          //     spacing: 8.w,
-          //     runSpacing: 4.h,
-          //     children: widget.poem.hashtags
-          //         .take(5)
-          //         .map(
-          //           (tag) => Text(
-          //             '#$tag',
-          //             style: TextStyle(
-          //               fontSize: 13.sp,
-          //               fontWeight: FontWeight.w500,
-          //               color: AppTheme.primaryColor,
-          //             ),
-          //           ),
-          //         )
-          //         .toList(),
-          //   ),
-          // ],
 
           // ── Audio seekbar ──
           _buildAudioSeekbar(),
@@ -821,7 +862,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
 
               SizedBox(width: 16.w),
 
-              // Comment button
+              // Comment button — FIX #8: uses local _commentCount
               GestureDetector(
                 onTap: () => _showComments(context),
                 child: Row(
@@ -833,7 +874,7 @@ class _PoemCardState extends ConsumerState<PoemCard> {
                     ),
                     SizedBox(width: 4.w),
                     Text(
-                      '${widget.poem.commentsCount}',
+                      '$_commentCount',
                       style: TextStyle(
                         fontSize: 13.sp,
                         color: AppTheme.textLightColor,

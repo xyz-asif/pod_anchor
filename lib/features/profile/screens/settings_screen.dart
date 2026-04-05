@@ -123,7 +123,7 @@ class SettingsScreen extends ConsumerWidget {
                 iconColor: AppTheme.textMediumColor,
                 label: 'App Version',
                 trailing: Text(
-                  '1.0.2',
+                  '1.0.3',
                   style: TextStyle(
                     fontSize: 14.sp,
                     color: AppTheme.textMediumColor,

@@ -4,6 +4,7 @@ import 'package:chatbee/features/poems/models/poem_model.dart';
 import 'package:chatbee/features/profile/repos/follow_repo.dart';
 import 'package:chatbee/features/poems/repos/poem_repo.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
+import 'package:chatbee/features/social/providers/social_events.dart';
 import 'package:chatbee/features/chat/repos/chat_repo.dart';
 import 'package:chatbee/features/chat/controllers/chat_list_controller.dart';
 import 'package:chatbee/features/auth/controllers/auth_controller.dart';
@@ -64,15 +65,72 @@ class OtherProfileState {
 /// Controller for viewing another user's profile.
 ///
 /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-/// Replaces all setState calls in OtherProfileScreen.
 @riverpod
 class OtherProfileController extends _$OtherProfileController {
   @override
   OtherProfileState build(String userId) {
-    // Defer loading until after build returns initial state to avoid 
-    // "uninitialized provider" error when reading/writing state.
+    // FIX: Subscribe to social events so like/repost/comment state on poems
+    // displayed in this profile stays in sync with actions from other screens.
+    final sub = ref.read(socialEventStreamProvider).stream.listen((event) {
+      _updatePoemSocialState(event);
+    });
+    ref.onDispose(() => sub.cancel());
+
     Future.microtask(() => _loadProfile(userId));
     return const OtherProfileState();
+  }
+
+  /// Apply a social event to poems and reposts in this profile's state.
+  void _updatePoemSocialState(SocialEvent event) {
+    final currentPoems = state.poems;
+    final currentReposts = state.reposts;
+    bool changed = false;
+
+    final updatedPoems = currentPoems.map((p) {
+      if (p.id == event.poemId) {
+        changed = true;
+        return p.copyWith(
+          isLikedByMe: event.isLiked ?? p.isLikedByMe,
+          likesCount: event.likesCount ?? p.likesCount,
+          isRepostedByMe: event.isReposted ?? p.isRepostedByMe,
+          repostsCount: event.repostsCount ?? p.repostsCount,
+          commentsCount: event.commentsCount ?? p.commentsCount,
+        );
+      }
+      return p;
+    }).toList();
+
+    final updatedReposts = currentReposts.map((p) {
+      // Update the repost wrapper if it matches
+      if (p.id == event.poemId) {
+        changed = true;
+        return p.copyWith(
+          isLikedByMe: event.isLiked ?? p.isLikedByMe,
+          likesCount: event.likesCount ?? p.likesCount,
+          isRepostedByMe: event.isReposted ?? p.isRepostedByMe,
+          repostsCount: event.repostsCount ?? p.repostsCount,
+          commentsCount: event.commentsCount ?? p.commentsCount,
+        );
+      }
+      // Also update the original poem inside a repost
+      if (p.isRepost && p.originalPoem?.id == event.poemId) {
+        changed = true;
+        return p.copyWith(
+          originalPoem: p.originalPoem!.copyWith(
+            isLikedByMe: event.isLiked ?? p.originalPoem!.isLikedByMe,
+            likesCount: event.likesCount ?? p.originalPoem!.likesCount,
+            isRepostedByMe: event.isReposted ?? p.originalPoem!.isRepostedByMe,
+            repostsCount: event.repostsCount ?? p.originalPoem!.repostsCount,
+            commentsCount: event.commentsCount ?? p.originalPoem!.commentsCount,
+          ),
+        );
+      }
+      return p;
+    }).toList();
+
+    if (changed) {
+      state = state.copyWith(poems: updatedPoems, reposts: updatedReposts);
+    }
   }
 
   Future<void> _loadProfile(String userId) async {
@@ -93,10 +151,7 @@ class OtherProfileController extends _$OtherProfileController {
       // Load poems after profile succeeds
       _loadPoems(userId);
     } catch (e) {
-      state = state.copyWith(
-        error: e.toString(),
-        isLoadingProfile: false,
-      );
+      state = state.copyWith(error: e.toString(), isLoadingProfile: false);
     }
   }
 
@@ -112,7 +167,9 @@ class OtherProfileController extends _$OtherProfileController {
   Future<void> loadReposts() async {
     if (!state.isLoadingReposts) return; // Already loaded
     try {
-      final page = await ref.read(socialRepoProvider).getUserReposts(state.profile!.id);
+      final page = await ref
+          .read(socialRepoProvider)
+          .getUserReposts(state.profile!.id);
       state = state.copyWith(reposts: page.poems, isLoadingReposts: false);
     } catch (_) {
       state = state.copyWith(isLoadingReposts: false);
@@ -171,9 +228,13 @@ class OtherProfileController extends _$OtherProfileController {
       );
 
       // Update own following count
-      ref.read(authControllerProvider.notifier).updateFollowingCount(
-        isNowFollowing && !prevFollowing ? 1 : (!isNowFollowing && prevFollowing ? -1 : 0),
-      );
+      ref
+          .read(authControllerProvider.notifier)
+          .updateFollowingCount(
+            isNowFollowing && !prevFollowing
+                ? 1
+                : (!isNowFollowing && prevFollowing ? -1 : 0),
+          );
     } catch (_) {
       // Rollback
       state = state.copyWith(

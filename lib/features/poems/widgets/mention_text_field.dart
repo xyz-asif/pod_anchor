@@ -35,10 +35,34 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
   final List<String> _suggestions = [];
   final List<String> _selectedMentions = [];
 
+  // FIX #9: Internal focus node to detect focus loss
+  late final FocusNode _effectiveFocusNode;
+  bool _ownsNode = false;
+
+  // FIX #9: Scroll listener to dismiss overlay on parent scroll
+  ScrollPosition? _scrollPosition;
+
   @override
   void initState() {
     super.initState();
+    if (widget.focusNode != null) {
+      _effectiveFocusNode = widget.focusNode!;
+    } else {
+      _effectiveFocusNode = FocusNode();
+      _ownsNode = true;
+    }
     widget.controller.addListener(_onTextChanged);
+    // FIX #9: Dismiss overlay when focus is lost
+    _effectiveFocusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // FIX #9: Listen to parent scroll to dismiss overlay
+    _scrollPosition?.removeListener(_onParentScroll);
+    _scrollPosition = Scrollable.maybeOf(context)?.position;
+    _scrollPosition?.addListener(_onParentScroll);
   }
 
   @override
@@ -46,7 +70,20 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
     _debounce?.cancel();
     _removeOverlay();
     widget.controller.removeListener(_onTextChanged);
+    _effectiveFocusNode.removeListener(_onFocusChanged);
+    if (_ownsNode) _effectiveFocusNode.dispose();
+    _scrollPosition?.removeListener(_onParentScroll);
     super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!_effectiveFocusNode.hasFocus) {
+      _removeOverlay();
+    }
+  }
+
+  void _onParentScroll() {
+    _removeOverlay();
   }
 
   void _onTextChanged() {
@@ -82,7 +119,9 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
     if (query.isEmpty) return;
 
     try {
-      final response = await ref.read(socialRepoProvider).searchUsersForMention(query);
+      final response = await ref
+          .read(socialRepoProvider)
+          .searchUsersForMention(query);
       if (mounted && _currentQuery == query) {
         setState(() {
           _suggestions.clear();
@@ -136,7 +175,9 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
                     dense: true,
                     leading: CircleAvatar(
                       radius: 18.r,
-                      backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+                      backgroundColor: AppTheme.primaryColor.withValues(
+                        alpha: 0.1,
+                      ),
                       child: Text(
                         username.isNotEmpty ? username[0].toUpperCase() : '?',
                         style: TextStyle(
@@ -179,7 +220,8 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
     final atIndex = textBeforeCursor.lastIndexOf('@');
 
     if (atIndex >= 0) {
-      final newText = '${text.substring(0, atIndex)}@$username ${text.substring(cursor)}';
+      final newText =
+          '${text.substring(0, atIndex)}@$username ${text.substring(cursor)}';
       widget.controller.value = TextEditingValue(
         text: newText,
         selection: TextSelection.collapsed(
@@ -205,7 +247,7 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
       link: _layerLink,
       child: TextField(
         controller: widget.controller,
-        focusNode: widget.focusNode,
+        focusNode: _effectiveFocusNode,
         maxLines: 3,
         minLines: 1,
         maxLength: widget.maxLength,
@@ -225,13 +267,17 @@ class _MentionTextFieldState extends ConsumerState<MentionTextField> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12.r),
-            borderSide: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.5)),
+            borderSide: BorderSide(
+              color: AppTheme.primaryColor.withValues(alpha: 0.5),
+            ),
           ),
-          contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 16.w,
+            vertical: 12.h,
+          ),
           counterText: '', // Hide default counter
         ),
       ),
     );
   }
 }
-

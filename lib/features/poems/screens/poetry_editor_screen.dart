@@ -37,6 +37,10 @@ const List<String> kStaticHashtags = [
 // ── Audio state enum ──
 enum AudioState { idle, recording, recorded, uploading, uploaded }
 
+/// Estimated height of the OS selection toolbar (copy/paste/select-all).
+/// We place our formatting toolbar below this so they never overlap.
+const double _kOsToolbarClearance = 52.0;
+
 class PoetryEditorScreen extends ConsumerStatefulWidget {
   final String? poemId;
   final PoemModel? existingPoem;
@@ -62,7 +66,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   // ── Toolbar ──
   bool _showToolbar = false;
   double? _toolbarTop;
-  Timer? _toolbarHideTimer;
+  // FIX #5: Removed the 5-second auto-hide timer. The toolbar now stays
+  // visible as long as text is selected and hides when the selection collapses.
   TextSelection? _lastNonCollapsedSelection;
 
   // ── Word count ──
@@ -80,6 +85,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   // ── Copyright state ──
   bool _isOriginal = false;
+  // FIX #10: Synchronous flag to prevent double-tap race condition.
   bool _isPublishing = false;
 
   // ── Audio state ──
@@ -154,9 +160,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       _audioState = AudioState.uploaded;
     }
 
-    // Seed word count from existing content so the publish/update button is
-    // enabled immediately when opening a draft or an existing poem — without
-    // requiring the user to type anything first.
+    // Seed word count from existing content
     if (_currentPoem != null) {
       final text = _quillController.document.toPlainText().trim();
       _wordCount = text.isEmpty
@@ -164,14 +168,21 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
           : text.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
     }
 
-    // Title / description listeners — trigger rebuild so _isValidToPublish
-    // re-evaluates when the user edits these fields without touching content.
-    _titleController.addListener(() { if (mounted) setState(() {}); });
-    _descriptionController.addListener(() { if (mounted) setState(() {}); });
+    // Title / description listeners
+    _titleController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _descriptionController.addListener(() {
+      if (mounted) setState(() {});
+    });
 
-    // Word count listener
+    // FIX #4: Document change listener now triggers immediate setState for
+    // undo/redo button reactivity, with debounced word count update.
     _documentChangesSub = _quillController.document.changes.listen((_) {
       _hasEdits = true;
+      // Immediate rebuild so undo/redo buttons update instantly
+      if (mounted) setState(() {});
+      // Debounced word count (heavier computation)
       _countDebounce?.cancel();
       _countDebounce = Timer(const Duration(milliseconds: 300), () {
         if (mounted) _updateCounts();
@@ -193,39 +204,73 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   void _onSelectionChanged() {
     final selection = _quillController.selection;
-    _toolbarHideTimer?.cancel();
 
     if (selection.isValid && !selection.isCollapsed) {
       _lastNonCollapsedSelection = selection;
       _calculateToolbarPosition();
-      setState(() => _showToolbar = true);
-      _toolbarHideTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted) setState(() => _showToolbar = false);
-      });
-    } else {
-      if (_showToolbar) {
-        _toolbarHideTimer = Timer(const Duration(milliseconds: 300), () {
-          if (mounted && _quillController.selection.isCollapsed) {
-            setState(() {
-              _showToolbar = false;
-              _lastNonCollapsedSelection = null;
-            });
-          }
-        });
+      if (!_showToolbar) {
+        setState(() => _showToolbar = true);
       }
+    } else {
+      // Selection collapsed — hide toolbar after a brief grace period.
+      // This prevents flickering when the user taps a toolbar button
+      // (which briefly collapses the selection before format is applied).
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted && _quillController.selection.isCollapsed) {
+          setState(() {
+            _showToolbar = false;
+            _lastNonCollapsedSelection = null;
+          });
+        }
+      });
     }
   }
 
+  /// NEW: Position the toolbar BELOW the OS selection handles to avoid overlap.
+  ///
+  /// The OS copy/paste toolbar typically appears ABOVE the selection.
+  /// We place our formatting toolbar BELOW the selection (or at a safe
+  /// offset below the top of the visible area) so both are usable.
   void _calculateToolbarPosition() {
     final screenHeight = MediaQuery.of(context).size.height;
     final topPadding = MediaQuery.of(context).padding.top + kToolbarHeight;
-    final bottomPadding = 60.0;
-    final visibleEditorHeight = screenHeight - topPadding - bottomPadding;
-    final toolbarY = topPadding + (visibleEditorHeight * 0.15);
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final bottomLimit = screenHeight - keyboardHeight - 60;
+
+    // Try to get the actual selection position from the editor's RenderBox
+    double toolbarY;
+    try {
+      final editorRenderBox =
+          _editorKey.currentContext?.findRenderObject() as RenderBox?;
+      if (editorRenderBox != null && editorRenderBox.hasSize) {
+        // Place toolbar below the editor's top + OS toolbar clearance
+        final editorGlobalTop = editorRenderBox.localToGlobal(Offset.zero).dy;
+        // Position below where the OS toolbar would appear
+        // OS toolbar is above selection; our toolbar goes below selection area
+        toolbarY = editorGlobalTop + _kOsToolbarClearance;
+      } else {
+        // Fallback: below OS toolbar area
+        toolbarY = topPadding + _kOsToolbarClearance + 16;
+      }
+    } catch (_) {
+      toolbarY = topPadding + _kOsToolbarClearance + 16;
+    }
+
     setState(() {
       _showToolbar = true;
-      _toolbarTop = toolbarY.clamp(topPadding + 8, screenHeight - 100);
+      // Clamp between safe top (below OS toolbar) and safe bottom (above keyboard)
+      _toolbarTop = toolbarY.clamp(
+        topPadding + _kOsToolbarClearance,
+        bottomLimit,
+      );
     });
+  }
+
+  /// Called by the FloatingToolbar when any formatting button is tapped.
+  /// Keeps the toolbar visible during multi-step formatting.
+  void _onToolbarInteraction() {
+    // No-op now that we removed auto-hide, but keeps the hook available
+    // for future use (analytics, etc.)
   }
 
   TextAlign get _textAlignEnum {
@@ -249,16 +294,17 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     if (_titleController.text.trim() != _currentPoem!.title.trim()) return true;
 
     // Description
-    if (_descriptionController.text.trim() !=
-        _currentPoem!.description.trim()) return true;
+    if (_descriptionController.text.trim() != _currentPoem!.description.trim())
+      return true;
 
     // Hashtags (order-independent set comparison)
     final originalTags = Set<String>.from(_currentPoem!.hashtags);
     final currentTags = Set<String>.from(_allHashtags);
     if (originalTags.length != currentTags.length ||
-        !originalTags.containsAll(currentTags)) return true;
+        !originalTags.containsAll(currentTags))
+      return true;
 
-    // Audio — removed an existing track, or a new one was recorded/uploaded
+    // Audio
     final hadAudio = _currentPoem!.hasAudio;
     final hasAudioNow = _audioState != AudioState.idle;
     if (hadAudio != hasAudioNow) return true;
@@ -270,7 +316,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     // Text alignment
     if (_textAlign != _currentPoem!.textAlign) return true;
 
-    // Content delta (expensive — skip if document was never touched)
+    // Content delta (skip if document was never touched)
     if (!_hasEdits) return false;
     final currentDelta = jsonEncode(
       _quillController.document.toDelta().toJson(),
@@ -322,16 +368,14 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
 
   void _updateCounts() {
     final text = _quillController.document.toPlainText().trim();
-    setState(() {
-      if (text.isEmpty) {
-        _wordCount = 0;
-      } else {
-        _wordCount = text
-            .split(RegExp(r'\s+'))
-            .where((s) => s.isNotEmpty)
-            .length;
-      }
-    });
+    final newCount = text.isEmpty
+        ? 0
+        : text.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).length;
+    // Only rebuild if count actually changed (avoid unnecessary rebuilds
+    // since the document change listener already called setState).
+    if (_wordCount != newCount) {
+      setState(() => _wordCount = newCount);
+    }
   }
 
   // ── Audio recording ──
@@ -433,13 +477,31 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     setState(() => _isRecordingPaused = false);
   }
 
+  // FIX #7: Detect duration of picked audio files.
   Future<void> _pickAudioFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.audio);
     if (result == null || result.files.isEmpty) return;
+
+    final path = result.files.first.path;
+    if (path == null) return;
+
+    // Probe duration from the picked file
+    int detectedDuration = 0;
+    final tempPlayer = AudioPlayer();
+    try {
+      final duration = await tempPlayer.setFilePath(path);
+      detectedDuration = duration?.inSeconds ?? 0;
+    } catch (_) {
+      // Duration detection failed — fall back to 0, seekbar will still work
+      // once audio is loaded for playback.
+    } finally {
+      await tempPlayer.dispose();
+    }
+
     setState(() {
-      _recordingPath = result.files.first.path;
+      _recordingPath = path;
       _audioState = AudioState.recorded;
-      _audioDuration = 0;
+      _audioDuration = detectedDuration;
     });
   }
 
@@ -481,11 +543,12 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     try {
       await _previewPlayer.setAudioSource(source);
       _previewPlayer.play();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isPlayingPreview = true;
           _isLoadingAudio = false;
         });
+      }
     } catch (e) {
       if (mounted) setState(() => _isLoadingAudio = false);
       return;
@@ -499,11 +562,16 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
   }
 
   void _removeAudio() {
+    // FIX: Stop preview if playing before removing
+    if (_isPlayingPreview) {
+      _previewPlayer.stop();
+    }
     setState(() {
       _audioState = AudioState.idle;
       _recordingPath = null;
       _audioURL = null;
       _audioDuration = 0;
+      _isPlayingPreview = false;
     });
   }
 
@@ -516,8 +584,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     );
     if (tag.isEmpty ||
         _customTags.contains(tag) ||
-        _selectedHashtags.contains(tag))
+        _selectedHashtags.contains(tag)) {
       return;
+    }
     if (_selectedHashtags.length + _customTags.length >= 10) {
       AppSnackbar.show(
         context,
@@ -622,31 +691,58 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     return true;
   }
 
-  void _prepareDocumentForSave() {
+  // FIX #2: Removed _prepareDocumentForSave(). Document preparation is now
+  // done on a COPY of the delta inside _submit(), so the live document is
+  // never mutated. If save fails, the user's work is untouched.
+
+  /// Builds a clean delta for saving without mutating the live document.
+  String _buildContentJsonForSave() {
     final doc = _quillController.document;
-    String text = doc.toPlainText();
+    // Get a copy of the delta
+    final delta = doc.toDelta();
+    final deltaJson = delta.toJson() as List;
+
+    // We create a temporary Document from the delta copy to apply formatting
+    // without touching the live document.
+    final tempDoc = Document.fromJson(deltaJson);
+
+    // Trim trailing newlines (keep at most 1)
+    String text = tempDoc.toPlainText();
     int trimCount = 0;
     for (int i = text.length - 1; i >= 0; i--) {
-      if (text[i] == '\n')
+      if (text[i] == '\n') {
         trimCount++;
-      else
+      } else {
         break;
+      }
     }
     if (trimCount > 1) {
-      doc.delete(doc.length - trimCount, trimCount - 1);
+      tempDoc.delete(tempDoc.length - trimCount, trimCount - 1);
     }
+
+    // Apply alignment
     final attr = _textAlign == 'center'
         ? Attribute.centerAlignment
         : (_textAlign == 'right'
               ? Attribute.rightAlignment
               : Attribute.leftAlignment);
-    doc.format(0, doc.length, attr);
+    if (tempDoc.length > 0) {
+      tempDoc.format(0, tempDoc.length, attr);
+    }
+
+    return jsonEncode(tempDoc.toDelta().toJson());
   }
 
   Future<void> _onDraft() async {
+    // FIX #10: Synchronous guard before any async work
     if (_isPublishing) return;
+    _isPublishing = true;
+    setState(() {});
+
     final plainText = _quillController.document.toPlainText().trim();
     if (plainText.isEmpty) {
+      _isPublishing = false;
+      setState(() {});
       AppSnackbar.show(
         context,
         message: 'Write something first',
@@ -655,22 +751,28 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       return;
     }
 
-    setState(() => _isPublishing = true);
     try {
-      _prepareDocumentForSave();
       await _submit(visibility: 'private');
     } finally {
-      if (mounted) setState(() => _isPublishing = false);
+      if (mounted) {
+        _isPublishing = false;
+        setState(() {});
+      }
     }
   }
 
   Future<void> _onPublish() async {
+    // FIX #10: Synchronous guard before any async work
     if (_isPublishing) return;
+    _isPublishing = true;
+    setState(() {});
 
-    // Updating a published poem with no changes — give feedback instead of a no-op API call.
+    // Updating a published poem with no changes
     if (widget.poemId != null &&
         widget.existingPoem?.isDraft != true &&
         !_hasUnsavedChanges) {
+      _isPublishing = false;
+      setState(() {});
       AppSnackbar.show(
         context,
         message: 'No changes made',
@@ -682,6 +784,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     final plainText = _quillController.document.toPlainText().trim();
 
     if (plainText.isEmpty) {
+      _isPublishing = false;
+      setState(() {});
       AppSnackbar.show(
         context,
         message: 'Write something first',
@@ -691,6 +795,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     }
 
     if (_wordCount > 150) {
+      _isPublishing = false;
+      setState(() {});
       AppSnackbar.show(
         context,
         message: 'Poem exceeds 150 word limit',
@@ -699,12 +805,13 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       return;
     }
 
-    setState(() => _isPublishing = true);
     try {
-      _prepareDocumentForSave();
       await _submit(visibility: 'public');
     } finally {
-      if (mounted) setState(() => _isPublishing = false);
+      if (mounted) {
+        _isPublishing = false;
+        setState(() {});
+      }
     }
   }
 
@@ -715,9 +822,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
       if (_audioState != AudioState.uploaded) return; // upload failed
     }
 
-    final contentJson = jsonEncode(
-      _quillController.document.toDelta().toJson(),
-    );
+    // FIX #2: Build content JSON from a copy, not the live document
+    final contentJson = _buildContentJsonForSave();
     final plainText = _quillController.document.toPlainText().trim();
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
@@ -746,7 +852,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
         ref.read(myPoemsControllerProvider.notifier).updatePoem(poem);
         if (poem.isPublic) {
           try {
-            ref.read(homeFeedControllerProvider.notifier).updatePoemInFeed(poem);
+            ref
+                .read(homeFeedControllerProvider.notifier)
+                .updatePoemInFeed(poem);
           } catch (_) {}
           try {
             ref
@@ -763,7 +871,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
             ref.read(homeFeedControllerProvider.notifier).removePoem(poem.id);
           } catch (_) {}
           try {
-            ref.read(exploreFeedControllerProvider.notifier).removePoem(poem.id);
+            ref
+                .read(exploreFeedControllerProvider.notifier)
+                .removePoem(poem.id);
           } catch (_) {}
           try {
             ref.read(audioFeedControllerProvider.notifier).removePoem(poem.id);
@@ -807,7 +917,6 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     _countDebounce?.cancel();
     _documentChangesSub?.cancel();
     _audioPlayerSub?.cancel();
-    _toolbarHideTimer?.cancel();
     _recordingTimer?.cancel();
     _quillController.removeListener(_onSelectionChanged);
     _quillController.dispose();
@@ -817,6 +926,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
     _editorFocusNode.dispose();
     _titleFocusNode.dispose();
     _recorder.dispose();
+    // FIX #6: Stop audio before disposing to prevent bleed-through
+    _previewPlayer.stop();
     _previewPlayer.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -991,7 +1102,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                 ),
               ),
 
-              // Floating toolbar
+              // Floating toolbar — positioned BELOW OS selection toolbar
               if (_showToolbar)
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 150),
@@ -1000,6 +1111,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                       _toolbarTop ??
                       (MediaQuery.of(context).padding.top +
                           kToolbarHeight +
+                          _kOsToolbarClearance +
                           16),
                   left: 16,
                   right: 16,
@@ -1014,6 +1126,7 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
                         child: FloatingToolbar(
                           controller: _quillController,
                           savedSelection: _lastNonCollapsedSelection,
+                          onInteraction: _onToolbarInteraction,
                         ),
                       ),
                     ),
@@ -1088,6 +1201,9 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
         ),
 
         SizedBox(width: 4.w),
+
+        // FIX #4: Undo/Redo now update reactively because document changes
+        // trigger immediate setState via the changes listener.
 
         // Undo
         IconButton(
@@ -1169,8 +1285,8 @@ class _PoetryEditorScreenState extends ConsumerState<PoetryEditorScreen>
             widget.poemId == null
                 ? 'Publish Poem'
                 : (widget.existingPoem?.isDraft == true
-                    ? 'Publish'
-                    : 'Update Poem'),
+                      ? 'Publish'
+                      : 'Update Poem'),
             style: TextStyle(
               fontSize: 16.sp,
               fontWeight: FontWeight.w600,

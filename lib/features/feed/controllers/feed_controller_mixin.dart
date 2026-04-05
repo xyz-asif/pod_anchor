@@ -29,6 +29,16 @@ mixin FeedControllerMixin {
           repostsCount: repostsCount ?? p.repostsCount,
           commentsCount: commentsCount ?? p.commentsCount,
         );
+      } else if (p.isRepost && p.originalPoem?.id == poemId) {
+        return p.copyWith(
+          originalPoem: p.originalPoem!.copyWith(
+            isLikedByMe: isLiked ?? p.originalPoem!.isLikedByMe,
+            likesCount: likesCount ?? p.originalPoem!.likesCount,
+            isRepostedByMe: isReposted ?? p.originalPoem!.isRepostedByMe,
+            repostsCount: repostsCount ?? p.originalPoem!.repostsCount,
+            commentsCount: commentsCount ?? p.originalPoem!.commentsCount,
+          ),
+        );
       }
       return p;
     }).toList());
@@ -40,14 +50,20 @@ mixin FeedControllerMixin {
     state = AsyncValue.data([poem, ...current]);
   }
 
-  /// Fixed: uses indexWhere to skip unnecessary rebuilds when the poem
-  /// isn't in this feed (Fix 3).
+  /// Fixed: uses map to skip unnecessary rebuilds when the poem
+  /// isn't in this feed while correctly updating all instances of 
+  /// the poem, including inside repost wrappers (Fix 3/4).
   void updatePoemInFeed(PoemModel updatedPoem) {
     final current = state.valueOrNull;
     if (current == null) return;
-    final index = current.indexWhere((p) => p.id == updatedPoem.id);
-    if (index < 0) return; // Poem not in this feed — skip
-    state = AsyncValue.data(List.from(current)..[index] = updatedPoem);
+    state = AsyncValue.data(current.map((p) {
+      if (p.id == updatedPoem.id) {
+        return updatedPoem;
+      } else if (p.isRepost && p.originalPoem?.id == updatedPoem.id) {
+        return p.copyWith(originalPoem: updatedPoem);
+      }
+      return p;
+    }).toList());
   }
 
   /// Remove a poem from the feed list (e.g. after deletion).

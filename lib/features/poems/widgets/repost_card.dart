@@ -26,7 +26,11 @@ class RepostCard extends StatelessWidget {
             onTap: () => context.push('/profile/${repost.author.id}'),
             child: Row(
               children: [
-                Icon(Icons.repeat_rounded, size: 14.r, color: AppTheme.textLightColor),
+                Icon(
+                  Icons.repeat_rounded,
+                  size: 14.r,
+                  color: AppTheme.textLightColor,
+                ),
                 SizedBox(width: 6.w),
                 CircleAvatar(
                   radius: 12.r,
@@ -38,13 +42,19 @@ class RepostCard extends StatelessWidget {
                 SizedBox(width: 6.w),
                 Text(
                   '${repost.author.displayName} reposted',
-                  style: TextStyle(fontSize: 13.sp, color: AppTheme.textLightColor),
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    color: AppTheme.textLightColor,
+                  ),
                 ),
                 const Spacer(),
                 if (repost.createdAt != null)
                   Text(
                     timeago.format(repost.createdAt!, locale: 'en_short'),
-                    style: TextStyle(fontSize: 11.sp, color: AppTheme.textLightColor),
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      color: AppTheme.textLightColor,
+                    ),
                   ),
               ],
             ),
@@ -52,8 +62,19 @@ class RepostCard extends StatelessWidget {
         ),
 
         // ── Original poem card (full, same as feed) ──
+        // FIX: Add a ValueKey that includes social state so Flutter's
+        // reconciliation correctly detects changes to the nested poem.
+        // Without this, when the feed controller updates originalPoem's
+        // isLikedByMe from false→true, the PoemCard's didUpdateWidget
+        // may not fire because Flutter sees the "same" widget type at
+        // the same position with no key change.
         if (original != null)
-          PoemCard(poem: original)
+          PoemCard(
+            key: ValueKey(
+              'repost_${repost.id}_${original.id}_${original.isLikedByMe}_${original.likesCount}',
+            ),
+            poem: original,
+          )
         else
           Container(
             margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
@@ -61,7 +82,9 @@ class RepostCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppTheme.surfaceColor,
               borderRadius: BorderRadius.circular(16.r),
-              border: Border.all(color: AppTheme.borderColor.withValues(alpha: 0.6)),
+              border: Border.all(
+                color: AppTheme.borderColor.withValues(alpha: 0.6),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.04),

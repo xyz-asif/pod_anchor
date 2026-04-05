@@ -15,11 +15,7 @@ class PoemStandaloneScreen extends ConsumerStatefulWidget {
   final String poemId;
   final PoemModel? poem; // If passed via extra, show immediately
 
-  const PoemStandaloneScreen({
-    super.key,
-    required this.poemId,
-    this.poem,
-  });
+  const PoemStandaloneScreen({super.key, required this.poemId, this.poem});
 
   @override
   ConsumerState<PoemStandaloneScreen> createState() =>
@@ -37,8 +33,9 @@ class _PoemStandaloneScreenState extends ConsumerState<PoemStandaloneScreen> {
 
   void _onUpdated(PoemModel updated) {
     setState(() => _localPoem = updated);
-    // Invalidate the remote provider so a future re-enter fetches fresh data.
-    ref.invalidate(poemFutureProvider(widget.poemId));
+    // FIX #17: Don't invalidate the provider — we already have the fresh data
+    // locally. Invalidating triggers a wasted network call whose result is
+    // never displayed (because _localPoem takes priority).
   }
 
   @override

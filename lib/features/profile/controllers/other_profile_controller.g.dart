@@ -7,7 +7,7 @@ part of 'other_profile_controller.dart';
 // **************************************************************************
 
 String _$otherProfileControllerHash() =>
-    r'ecfdf2dc3a0339fafdb9ea7059d0333e65153839';
+    r'd0e11a4ab84f15128d8fe911785c3dd42f5737f6';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -40,7 +40,6 @@ abstract class _$OtherProfileController
 /// Controller for viewing another user's profile.
 ///
 /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-/// Replaces all setState calls in OtherProfileScreen.
 ///
 /// Copied from [OtherProfileController].
 @ProviderFor(OtherProfileController)
@@ -49,14 +48,12 @@ const otherProfileControllerProvider = OtherProfileControllerFamily();
 /// Controller for viewing another user's profile.
 ///
 /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-/// Replaces all setState calls in OtherProfileScreen.
 ///
 /// Copied from [OtherProfileController].
 class OtherProfileControllerFamily extends Family<OtherProfileState> {
   /// Controller for viewing another user's profile.
   ///
   /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-  /// Replaces all setState calls in OtherProfileScreen.
   ///
   /// Copied from [OtherProfileController].
   const OtherProfileControllerFamily();
@@ -64,7 +61,6 @@ class OtherProfileControllerFamily extends Family<OtherProfileState> {
   /// Controller for viewing another user's profile.
   ///
   /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-  /// Replaces all setState calls in OtherProfileScreen.
   ///
   /// Copied from [OtherProfileController].
   OtherProfileControllerProvider call(String userId) {
@@ -96,7 +92,6 @@ class OtherProfileControllerFamily extends Family<OtherProfileState> {
 /// Controller for viewing another user's profile.
 ///
 /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-/// Replaces all setState calls in OtherProfileScreen.
 ///
 /// Copied from [OtherProfileController].
 class OtherProfileControllerProvider
@@ -108,7 +103,6 @@ class OtherProfileControllerProvider
   /// Controller for viewing another user's profile.
   ///
   /// Manages profile data, poems, reposts, follow toggle, and chat creation.
-  /// Replaces all setState calls in OtherProfileScreen.
   ///
   /// Copied from [OtherProfileController].
   OtherProfileControllerProvider(String userId)

@@ -29,7 +29,7 @@ final notificationControllerProvider =
 
 typedef _$NotificationController = AsyncNotifier<List<NotificationModel>>;
 String _$unreadNotificationCountHash() =>
-    r'4484ae540c876fd4dfa8dfbc5c23c6f6ec518902';
+    r'a724ea6e4d2773b3ab7d22e9e73d11aa22428e27';
 
 /// Separate provider for badge count so it can be watched independently
 /// without rebuilding the full notification list.
