@@ -514,7 +514,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet>
                                             Row(
                                               children: [
                                                 Text(
-                                                  comment.author.displayName,
+                                                  '${comment.author.username}',
                                                   style: TextStyle(
                                                     fontSize: 13.sp,
                                                     fontWeight: FontWeight.w600,
