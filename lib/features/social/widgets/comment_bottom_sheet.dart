@@ -11,6 +11,7 @@ import 'package:chatbee/features/social/models/comment_model.dart';
 import 'package:chatbee/features/social/repos/social_repo.dart';
 import 'package:chatbee/features/poems/controllers/poem_controller.dart';
 import 'package:chatbee/shared/widgets/app_snackbar.dart';
+import 'package:go_router/go_router.dart';
 
 class CommentBottomSheet extends ConsumerStatefulWidget {
   final String poemId;
@@ -495,15 +496,22 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet>
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      CircleAvatar(
-                                        radius: 16.r,
-                                        backgroundColor: AppTheme.borderColor,
-                                        backgroundImage:
-                                            comment.author.photoURL.isNotEmpty
-                                            ? CachedNetworkImageProvider(
-                                                comment.author.photoURL,
-                                              )
-                                            : null,
+                                      GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () {
+                                          Navigator.of(context).pop();
+                                          context.push('/profile/${comment.author.id}');
+                                        },
+                                        child: CircleAvatar(
+                                          radius: 16.r,
+                                          backgroundColor: AppTheme.borderColor,
+                                          backgroundImage:
+                                              comment.author.photoURL.isNotEmpty
+                                              ? CachedNetworkImageProvider(
+                                                  comment.author.photoURL,
+                                                )
+                                              : null,
+                                        ),
                                       ),
                                       SizedBox(width: 10.w),
                                       Expanded(
@@ -513,13 +521,20 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet>
                                           children: [
                                             Row(
                                               children: [
-                                                Text(
-                                                  '${comment.author.username}',
-                                                  style: TextStyle(
-                                                    fontSize: 13.sp,
-                                                    fontWeight: FontWeight.w600,
-                                                    color:
-                                                        AppTheme.textDarkColor,
+                                                GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: () {
+                                                    Navigator.of(context).pop();
+                                                    context.push('/profile/${comment.author.id}');
+                                                  },
+                                                  child: Text(
+                                                    '${comment.author.username}',
+                                                    style: TextStyle(
+                                                      fontSize: 13.sp,
+                                                      fontWeight: FontWeight.w600,
+                                                      color:
+                                                          AppTheme.textDarkColor,
+                                                    ),
                                                   ),
                                                 ),
                                                 if (comment.createdAt !=
