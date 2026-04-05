@@ -71,10 +71,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     ref.read(wsEventHandlerProvider);
 
     // Mark room as read explicitly when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      log('[CHAT_SCREEN_DEBUG] Screen Opend for room: ${widget.roomId}. Setting currentOpenRoomProvider = ${widget.roomId}', name: 'UI_STATE');
+      log('[CHAT_SCREEN_DEBUG] Screen Opened for room: ${widget.roomId}. Setting currentOpenRoomProvider = ${widget.roomId}', name: 'UI_STATE');
       ref.read(currentOpenRoomProvider.notifier).state = widget.roomId;
+
+      // Always merge-fetch on screen open — the keepAlive provider
+      // may have stale data if messages arrived while WS was dead.
+      await ref.read(messageControllerProvider(widget.roomId).notifier).silentRefresh();
+
+      if (!mounted) return;
       ref.read(messageControllerProvider(widget.roomId).notifier).markAsRead();
       ref.read(chatListControllerProvider.notifier).clearUnreadCount(widget.roomId);
     });
@@ -97,20 +103,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   @override
+  void deactivate() {
+    final roomId = widget.roomId;
+    // Capture state and notifier synchronously because once this synchronous 
+    // block ends, dispose() runs and ref becomes invalid.
+    final currentState = ref.read(currentOpenRoomProvider);
+    final notifier = ref.read(currentOpenRoomProvider.notifier);
+
+    if (currentState == roomId) {
+      // Use microtask to avoid 'setState() or markNeedsBuild() called during build' errors 
+      // when unmounting widgets trigger provider updates.
+      Future.microtask(() {
+        try {
+          notifier.state = null;
+        } catch (_) {}
+      });
+    }
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     
-    // Clear currentOpenRoom only if this screen still owns it.
-    // Without the guard, navigating A→B and quickly back causes B's dispose
-    // to null the value that A's initState just set, breaking unread suppression.
-    log('[CHAT_SCREEN_DEBUG] Screen Disposed for room: ${widget.roomId}. Clearing currentOpenRoomProvider', name: 'UI_STATE');
-    try {
-      if (ref.read(currentOpenRoomProvider) == widget.roomId) {
-        ref.read(currentOpenRoomProvider.notifier).state = null;
-      }
-    } catch (_) {
-      log('[CHAT_SCREEN_DEBUG] ref already disposed — currentOpenRoom clear skipped', name: 'UI_STATE');
-    }
+    // Don't try to clear currentOpenRoomProvider here — ref may be disposed.
+    // It's already handled in deactivate() above.
 
     // Cancel recording - wrap in try-catch since ref may be disposed
     try {
