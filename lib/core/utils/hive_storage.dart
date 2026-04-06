@@ -7,6 +7,7 @@ import 'dart:developer';
 class HiveStorage {
   static const String _authBoxName = 'auth';
   static const String _tokenKey = 'auth_token';
+  static const String _refreshTokenKey = 'refresh_token';
   static const String _sessionExistsKey = 'session_exists';
   
   static Box? _authBox;
@@ -42,6 +43,24 @@ class HiveStorage {
   static bool hasToken() {
     return getToken() != null;
   }
+
+  /// Save refresh token
+  static Future<void> setRefreshToken(String token) async {
+    if (_authBox == null) await init();
+    await _authBox!.put(_refreshTokenKey, token);
+  }
+
+  /// Get refresh token
+  static String? getRefreshToken() {
+    if (_authBox == null) return null;
+    return _authBox!.get(_refreshTokenKey) as String?;
+  }
+
+  /// Clear refresh token
+  static Future<void> clearRefreshToken() async {
+    if (_authBox == null) return;
+    await _authBox!.delete(_refreshTokenKey);
+  }
   
   /// Set session exists flag synchronously
   static Future<void> setSessionExists(bool exists) async {
@@ -59,7 +78,7 @@ class HiveStorage {
   /// Clear all auth data (for logout)
   static Future<void> clearAll() async {
     if (_authBox == null) return;
-    await _authBox!.clear();
+    await _authBox!.clear(); // clears access token, refresh token, session flag
     log('All auth data cleared from Hive', name: 'HIVE');
   }
 }

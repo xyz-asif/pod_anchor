@@ -5,7 +5,6 @@ import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/shared/models/api_response.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/core/utils/hive_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 part 'api_client.g.dart';
 
@@ -35,30 +34,34 @@ class ApiClient {
       ),
     );
 
-    // Auto-refresh interceptor: catches 401, refreshes Firebase token, retries
+    // Auto-refresh interceptor: on 401, uses stored refresh token to get a new
+    // JWT access token from the backend (no Firebase network call needed).
     _dio.interceptors.add(
       InterceptorsWrapper(
         onError: (error, handler) async {
           if (error.response?.statusCode == 401) {
             try {
-              final user = FirebaseAuth.instance.currentUser;
-              if (user != null) {
-                final newToken = await user.getIdToken(true);
-                if (newToken != null) {
-                  // Update stored token
-                  await setToken(newToken);
+              final refreshToken = HiveStorage.getRefreshToken();
+              if (refreshToken != null) {
+                final response = await _dio.post(
+                  ApiEndpoints.authRefresh,
+                  data: {'refreshToken': refreshToken},
+                );
+                final data = response.data['data'] as Map<String, dynamic>;
+                final newAccess = data['accessToken'] as String;
+                final newRefresh = data['refreshToken'] as String;
+                await setToken(newAccess);
+                await HiveStorage.setRefreshToken(newRefresh);
 
-                  // Retry the failed request with the fresh token
-                  final opts = error.requestOptions;
-                  opts.headers['Authorization'] = 'Bearer $newToken';
-                  final response = await _dio.fetch(opts);
-                  return handler.resolve(response);
-                }
+                // Retry the original request with the new access token
+                final opts = error.requestOptions;
+                opts.headers['Authorization'] = 'Bearer $newAccess';
+                final retryResponse = await _dio.fetch(opts);
+                return handler.resolve(retryResponse);
               }
             } catch (refreshError) {
-              // Token refresh failed — user's Firebase session is gone
-              // Let the original 401 propagate so the UI can handle it
-              log('[API] Token auto-refresh failed: $refreshError', name: 'API_CLIENT');
+              // Refresh token expired or revoked — let 401 propagate so UI logs out
+              log('[API] Token refresh failed: $refreshError', name: 'API_CLIENT');
             }
           }
           return handler.next(error);

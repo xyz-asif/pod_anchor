@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/core/utils/hive_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
@@ -28,8 +29,8 @@ class AuthController extends _$AuthController {
     try {
       final user = await ref.read(authRepoProvider).signInWithGoogle();
 
-      // Connect WebSocket after successful sign-in
-      final token = await ref.read(authRepoProvider).getIdToken();
+      // Connect WebSocket using the JWT access token stored during exchange
+      final token = HiveStorage.getToken();
       if (token != null) {
         ref.read(webSocketServiceProvider).connect(token);
       }
@@ -81,13 +82,14 @@ class AuthController extends _$AuthController {
     final apiClient = ref.read(apiClientProvider);
 
     // ── Step 0: Wait for Firebase Auth to settle ──────────────────────────
-    // On cold start (especially release APK), FirebaseAuth.currentUser can
-    // be null even though the user has a persisted session. The native SDK
-    // restores auth state asynchronously via platform channels. We must wait
-    // for a non-null user (or timeout if genuinely signed out).
+    // Skip Firebase wait if we have a JWT refresh token — it's sufficient for
+    // session restore without Firebase (no network call needed).
+    // Only wait for Firebase when there is no refresh token (e.g. legacy session
+    // or first install before exchange).
+    final hasRefreshToken = HiveStorage.getRefreshToken() != null;
     bool firebaseReady = repo.isSignedIn;
-    if (!firebaseReady) {
-      log('Firebase currentUser is null, waiting for auth restore…', name: 'AUTH');
+    if (!firebaseReady && !hasRefreshToken) {
+      log('No refresh token — waiting for Firebase auth restore…', name: 'AUTH');
       try {
         final user = await FirebaseAuth.instance
             .authStateChanges()
@@ -101,19 +103,13 @@ class AuthController extends _$AuthController {
         firebaseReady = false;
       }
     }
-
-    // No Firebase user AND no stored token → truly logged out
-    if (!firebaseReady && !apiClient.hasToken) {
-      log('No Firebase user and no stored token — truly signed out', name: 'AUTH');
+    if (!firebaseReady && !apiClient.hasToken && !hasRefreshToken) {
+      log('No Firebase user, no access token, no refresh token — truly signed out', name: 'AUTH');
       return;
     }
 
-    // Firebase timed out but a stored token exists — fall through and try
-    // the API call. The token may still be valid (Firebase tokens last 1 hour).
-    // If it's expired, the 401 interceptor will attempt refresh; if that fails,
-    // the definitive auth error handler below correctly logs out.
-    if (!firebaseReady && apiClient.hasToken) {
-      log('Firebase restore timed out but stored token exists — proceeding with stored token', name: 'AUTH');
+    if (!firebaseReady) {
+      log('Proceeding without Firebase (refresh token or stored access token available)', name: 'AUTH');
     }
 
     state = const AsyncValue.loading();
@@ -124,8 +120,8 @@ class AuthController extends _$AuthController {
       // 2. Fetch profile from backend with the fresh token
       final user = await repo.getMyProfile();
 
-      // 3. Reconnect WebSocket with the fresh token
-      final token = await repo.getIdToken();
+      // 3. Reconnect WebSocket with the fresh JWT access token
+      final token = HiveStorage.getToken();
       if (token != null) {
         ref.read(webSocketServiceProvider).connect(token);
       }
@@ -167,18 +163,15 @@ class AuthController extends _$AuthController {
     }
   }
 
-  /// Returns a freshly-refreshed Firebase ID token.
-  /// Call this from lifecycle resume handler before reconnecting WebSocket.
-  /// Returns null if user is not signed in.
+  /// Returns a valid JWT access token, refreshing via the backend if needed.
+  /// Call this from the lifecycle resume handler before reconnecting WebSocket.
   Future<String?> getAndRefreshToken() async {
-    final repo = ref.read(authRepoProvider);
-    if (!repo.isSignedIn) return null;
     try {
-      await repo.refreshToken();      // forces Firebase token rotation
-      return await repo.getIdToken(); // returns new token
+      await ref.read(authRepoProvider).refreshToken(); // uses backend refresh token
+      return HiveStorage.getToken();
     } catch (e) {
-      // If refresh fails, existing token is returned; WS will retry on failure
-      return await repo.getIdToken();
+      log('getAndRefreshToken failed: $e', name: 'AUTH');
+      return HiveStorage.getToken(); // return whatever we have; WS will retry on failure
     }
   }
 

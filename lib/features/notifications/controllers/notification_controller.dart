@@ -118,8 +118,8 @@ class UnreadNotificationCount extends _$UnreadNotificationCount {
   @override
   int build() {
     ref.watch(userSessionProvider);
-    // Initial fetch
-    _fetchCount();
+    // Defer fetch until after build() returns so state is initialized
+    Future.microtask(_fetchCount);
     return 0;
   }
 

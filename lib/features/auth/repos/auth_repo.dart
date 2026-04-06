@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:chatbee/core/constants/api_endpoints.dart';
 import 'package:chatbee/core/network/api_client.dart';
+import 'package:chatbee/core/utils/hive_storage.dart';
 import 'package:chatbee/features/auth/models/user_model.dart';
 import 'package:chatbee/core/errors/failures.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -59,12 +60,14 @@ class AuthRepo {
       }
       log('Firebase ID token obtained: ${idToken.substring(0, 20)}...', name: 'AUTH');
 
-      // 6️⃣ Attach token to API client
-      log('Saving token to API client', name: 'AUTH');
-      await apiClient.setToken(idToken);
-      log('Token set on API client', name: 'AUTH');
+      // 6️⃣ Exchange Firebase token for our own JWT access + refresh tokens
+      log('Exchanging Firebase token for JWT', name: 'AUTH');
+      final tokens = await exchangeFirebaseToken(idToken);
+      await apiClient.setToken(tokens.accessToken);
+      await HiveStorage.setRefreshToken(tokens.refreshToken);
+      log('JWT tokens stored', name: 'AUTH');
 
-      // 7️⃣ Fetch user profile (backend auto-creates if new)
+      // 7️⃣ Fetch user profile
       log('Fetching user profile', name: 'AUTH');
       final response = await apiClient.get(ApiEndpoints.usersMe);
       final user = UserModel.fromJson(response.data);
@@ -89,6 +92,35 @@ class AuthRepo {
     }
   }
 
+  /// Exchange a Firebase ID token for our own JWT access + refresh token pair.
+  /// Called once per login — the only time Firebase is contacted for auth.
+  Future<({String accessToken, String refreshToken})> exchangeFirebaseToken(String firebaseToken) async {
+    final response = await apiClient.post(
+      ApiEndpoints.authExchange,
+      data: {'firebaseToken': firebaseToken},
+    );
+    return (
+      accessToken: response.data['accessToken'] as String,
+      refreshToken: response.data['refreshToken'] as String,
+    );
+  }
+
+  /// Refresh the JWT access token using the stored refresh token.
+  /// Returns the new access token, or null if no refresh token is stored.
+  Future<String?> refreshAccessToken() async {
+    final storedRefresh = HiveStorage.getRefreshToken();
+    if (storedRefresh == null) return null;
+    final response = await apiClient.post(
+      ApiEndpoints.authRefresh,
+      data: {'refreshToken': storedRefresh},
+    );
+    final newAccess = response.data['accessToken'] as String;
+    final newRefresh = response.data['refreshToken'] as String;
+    await apiClient.setToken(newAccess);
+    await HiveStorage.setRefreshToken(newRefresh);
+    return newAccess;
+  }
+
   /// Get Firebase ID token.
   /// [forceRefresh] = true fetches a brand new token from Firebase servers.
   /// Default false returns the cached token (fast, but may be expired).
@@ -96,12 +128,19 @@ class AuthRepo {
     return _firebaseAuth.currentUser?.getIdToken(forceRefresh);
   }
 
-  /// Refresh token for API client.
-  /// Always force-refreshes to guarantee a valid (non-expired) token.
+  /// Refresh the access token for the API client.
+  /// Uses backend refresh token first (fast, no Firebase dependency).
+  /// Falls back to Firebase exchange for legacy sessions that haven't exchanged yet.
   Future<void> refreshToken() async {
-    final token = await _firebaseAuth.currentUser?.getIdToken(true);
-    if (token != null) {
-      await apiClient.setToken(token);
+    final newToken = await refreshAccessToken();
+    if (newToken != null) return;
+    // Fallback: Firebase user exists but no refresh token stored (legacy session).
+    // Exchange Firebase token for a proper JWT pair — never set Firebase token directly.
+    final firebaseToken = await _firebaseAuth.currentUser?.getIdToken(true);
+    if (firebaseToken != null) {
+      final tokens = await exchangeFirebaseToken(firebaseToken);
+      await apiClient.setToken(tokens.accessToken);
+      await HiveStorage.setRefreshToken(tokens.refreshToken);
     }
   }
 
@@ -111,12 +150,20 @@ class AuthRepo {
     return UserModel.fromJson(response.data);
   }
 
-  /// Sign out
+  /// Sign out — revokes refresh token server-side then clears local state.
   Future<void> signOut() async {
+    final refreshToken = HiveStorage.getRefreshToken();
+    if (refreshToken != null) {
+      try {
+        await apiClient.post(ApiEndpoints.authLogout, data: {'refreshToken': refreshToken});
+      } catch (_) {
+        // Best-effort — still clear locally even if server call fails
+      }
+    }
     await apiClient.clearToken();
+    await HiveStorage.clearRefreshToken();
     await _googleSignIn.signOut();
     await _firebaseAuth.signOut();
-
     log("Signed out", name: "AUTH");
   }
 

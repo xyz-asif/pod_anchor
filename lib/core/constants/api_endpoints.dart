@@ -128,4 +128,9 @@ class ApiEndpoints {
 
   // ── Audio Feed ──
   static const String audioFeed = '/feed/audio';
+
+  // ── Auth (JWT exchange / refresh / logout) ──
+  static const String authExchange = '/auth/exchange';
+  static const String authRefresh  = '/auth/refresh';
+  static const String authLogout   = '/auth/logout';
 }
